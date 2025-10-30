@@ -17,12 +17,7 @@ REVERSE ENGINEER ANY WEB APP! ⚡️
 
 Welcome to Vectorly's Web Hacker... **No API? No Problem!**
 
-## Resources 📚
-
-- Company website: [vectorly.app](https://www.vectorly.app/)
-- YouTube tutorials: [youtube.com/@VectorlyAI](https://www.youtube.com/@VectorlyAI)
-
-## Overview of Our Process
+## Overview of Our Process ᯓ ✈︎
 
 1) Launch Chrome in debug mode (enable DevTools protocol on `127.0.0.1:9222`).
 2) Run the browser monitor and manually perform the target actions to capture browser state.
