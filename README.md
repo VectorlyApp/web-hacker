@@ -2,7 +2,16 @@
 
 REVERSE ENGINEER ANY WEB APP! ⚡️
 
-## Resources
+**You are in the right place if you ...** 
+
+* want your AI agent to take real actions on the web
+* never want to pay for an API
+* are tired of complicated, endless API integrations
+* dealing with closed APIs
+
+Welcome to Vectorly's Web Hacker... **No API? No Problem!**
+
+## Resources 📚
 
 - Company website: [vectorly.app](https://www.vectorly.app/)
 - YouTube tutorials: [youtube.com/@VectorlyAI](https://www.youtube.com/@VectorlyAI)
@@ -78,7 +87,7 @@ This substitutes parameter values and injects `auth_token` from cookies. The JSO
   - Windows (PowerShell): `iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex`
 - OpenAI API key
 
-## Setup Your Environment
+## Setup Your Environment 🔧
 
 ```bash
 # 1) Clone and enter the repo
@@ -98,7 +107,7 @@ cp .env.example .env  # then edit values
 export OPENAI_API_KEY="sk-..."
 ```
 
-## Launch Chrome in Debug Mode
+## Launch Chrome in Debug Mode 🐞
 
 ### Instructions for MacOS
 
@@ -154,7 +163,7 @@ if (!(Test-Path $chrome)) {
 # ws://127.0.0.1:9222/devtools/browser/*************************************
 ```
 
-## HACK (reverse engineer) WEB APPS!
+## HACK (reverse engineer) WEB APPS 👨🏻‍💻
 
 ### Monitor Browser While Performing Some Task
 
@@ -240,7 +249,7 @@ cdp_captures/
 
 Tip: Keep Chrome focused while monitoring and perform the target flow (search, checkout, etc.). Press Ctrl+C to stop; the script will consolidate transactions and produce a HAR automatically.
 
-### Run Routine Discovery Pipeline
+### Run Routine Discovery Agent (Our Very Smart AI with Very Good Prompt🔮)🤖
 
 Use the routine discovery pipeline to generate a reusable Routine (navigate → fetch → return) from your captured network data.
 
@@ -273,7 +282,7 @@ routine_discovery_output/
 └── routine.json                    # Final Routine model (name, parameters, operations)
 ```
 
-### Execute the Discovered Routines
+### Execute the Discovered Routines 🏃
 
 Once you have a routine JSON, run it in a real browser session (same Chrome debug session):
 
@@ -293,7 +302,7 @@ python scripts/execute_routine.py \
   --parameters-dict '{"origin": "boston", "destination": "new york", "departureDate": "2026-03-22"}'
 ```
 
-## Common Issues
+## Common Issues ⚠️
 
 - Chrome not detected / cannot connect to DevTools
 
@@ -303,7 +312,7 @@ python scripts/execute_routine.py \
 
   - Export the key in your shell or create a `.env` file and run via `uv run` (dotenv is loaded).
 
-## Coming Soon
+## Coming Soon 🔮
 
 - Integration of routine testing into the agentic pipeline
 
