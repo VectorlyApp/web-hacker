@@ -5,7 +5,7 @@ REVERSE ENGINEER ANY WEB APP! ⚡️
 **You are in the right place if you ...** 
 
 * want your AI agent to take real actions on the web
-* never want to pay for an API
+* never want to pay for an API (except for OpenAI... shouldn't piss them off...)
 * are tired of complicated, endless API integrations
 * dealing with closed APIs
 
