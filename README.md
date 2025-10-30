@@ -154,9 +154,9 @@ if (!(Test-Path $chrome)) {
 # ws://127.0.0.1:9222/devtools/browser/*************************************
 ```
 
-## Reverse Engineer!
+## HACK (reverse engineer) WEB APPS!
 
-## Monitor Browser While Performing Some Task
+### Monitor Browser While Performing Some Task
 
 Use the CDP browser monitor to block trackers and capture network, storage and interaction data while you manually perform tasks in Chrome.
 
@@ -240,7 +240,7 @@ cdp_captures/
 
 Tip: Keep Chrome focused while monitoring and perform the target flow (search, checkout, etc.). Press Ctrl+C to stop; the script will consolidate transactions and produce a HAR automatically.
 
-## Run Routine Discovery Pipeline
+### Run Routine Discovery Pipeline
 
 Use the routine discovery pipeline to generate a reusable Routine (navigate → fetch → return) from your captured network data.
 
@@ -273,7 +273,7 @@ routine_discovery_output/
 └── routine.json                    # Final Routine model (name, parameters, operations)
 ```
 
-## Execute the Discovered Routines
+### Execute the Discovered Routines
 
 Once you have a routine JSON, run it in a real browser session (same Chrome debug session):
 
