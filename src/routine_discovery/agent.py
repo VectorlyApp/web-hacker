@@ -1,0 +1,639 @@
+import json
+from pydantic import BaseModel, Field, field_validator
+from openai import OpenAI
+from src.routine_discovery.context_manager import ContextManager
+from src.utils.llm_utils import llm_parse_text_to_model, collect_text_from_response, manual_llm_parse_text_to_model
+from src.data_models.llm_responses import (
+    TransactionIdentificationResponse,
+    ExtractedVariableResponse,
+    TransactionConfirmationResponse,
+    VariableType,
+    ResolvedVariableResponse,
+    TestParametersResponse
+)
+from src.data_models.production_routine import Routine as ProductionRoutine
+from src.data_models.dev_routine import Routine, RoutineFetchOperation
+from uuid import uuid4
+import os
+
+
+class RoutineDiscoveryAgent(BaseModel):
+    """
+    Agent for discovering routines from the network transactions.
+    """
+    client: OpenAI
+    context_manager: ContextManager
+    task_description: str
+    llm_model: str = "gpt-5-mini"
+    message_history: list[dict] = Field(default_factory=list)
+    output_dir: str
+    last_response_id: str | None = None
+    tools: list[dict] = Field(default_factory=list)
+    n_transaction_identification_attempts: int = 3
+    current_transaction_identification_attempt: int = 0
+    
+    class Config:
+        arbitrary_types_allowed = True
+        
+    SYSTEM_PROMPT_IDENTIFY_TRANSACTIONS: str = f"""
+    You are a helpful assistant that is an expert in parsing network traffic.
+    You need to identify one or more network transactions that directly correspond to the user's requested task.
+    You have access to vectorstore that contains network transactions and storage data
+    (cookies, localStorage, sessionStorage, etc.).
+    """
+        
+        
+    def run(self) -> None:
+        """
+        Run the routine discovery agent.
+        """
+        
+        # make the output dir if specified
+        os.makedirs(self.output_dir, exist_ok=True)
+        
+        # validate the context manager
+        assert self.context_manager.vectorstore_id is not None, "Vectorstore ID is not set"
+        
+        # construct the tools
+        self.tools = [
+            {
+                "type": "file_search",
+                "vector_store_ids": [self.context_manager.vectorstore_id],
+            }
+        ]
+        
+        # add the system prompt to the message history
+        self._add_to_message_history("system", self.SYSTEM_PROMPT_IDENTIFY_TRANSACTIONS)
+        
+        # add the user prompt to the message history
+        self._add_to_message_history("user", f"Task description: {self.task_description}")
+        self._add_to_message_history("user", f"These are the possible network transaction ids you can choose from: {self.context_manager.get_all_transaction_ids()}")
+
+        print("Identifying the network transaction that directly corresponds to the user's requested task...")
+        
+        identified_transaction = None
+        
+        while identified_transaction is None:
+            # identify the transaction
+            identified_transaction = self.identify_transaction()
+            
+            # confirm the identified transaction
+            confirmation_response = self.confirm_indetified_transaction(identified_transaction)
+            
+            # if the identified transaction is not correct, try again
+            if not confirmation_response.is_correct:
+                identified_transaction = None
+                self.current_transaction_identification_attempt += 1
+                
+        if identified_transaction is None:
+            raise Exception("Failed to identify the network transactions that directly correspond to the user's requested task.")
+        
+        # save the indentified transactions
+        save_path = os.path.join(self.output_dir, "root_transaction.json")
+        with open(save_path, "w") as f:
+            json.dump(identified_transaction.model_dump(), f, ensure_ascii=False, indent=2)
+            
+        print(f"Identified transaction: {identified_transaction.transaction_id} saved to: {save_path}")
+        
+        # populating the transaction queue with the identified transaction
+        transaction_queue = [identified_transaction.transaction_id]
+        
+        # storing data for all transactions necessary for the routine construction
+        routine_transactions = {}
+        
+        # processing the transaction queue (breadth-first search)
+        while (len(transaction_queue) > 0):
+            
+            # make the output directory for the transaction
+            os.makedirs(os.path.join(self.output_dir, f"transaction_{len(routine_transactions)}"), exist_ok=True)
+            
+            # dequeue the transaction
+            transaction_id = transaction_queue.pop(0)
+            print(f"Processing transaction: {transaction_id}")
+            
+            # get the transaction
+            transaction = self.context_manager.get_transaction_by_id(transaction_id)
+            
+            # extract variables from the transaction
+            print("Extract variables (args, cookies, tokens, browser variables) from the identified transaction...")
+            extracted_variables = self.extract_variables(transaction_id)
+            
+            # save the extracted variables
+            save_path = os.path.join(self.output_dir, f"transaction_{len(routine_transactions)}", "extracted_variables.json")
+            with open(save_path, "w") as f:
+                json.dump(extracted_variables.model_dump(), f, ensure_ascii=False, indent=2)
+            print(f"Extracted variables saved to: {save_path}")
+                
+            # resolve cookies and tokens
+            print("Resolving cookies and tokens...")
+            resolved_variables = self.resolve_variables(extracted_variables)
+            resolved_variables_json = [resolved_variable.model_dump() for resolved_variable in resolved_variables]
+            
+            # save the resolved variables
+            save_path = os.path.join(self.output_dir, f"transaction_{len(routine_transactions)}", "resolved_variables.json")
+            with open(save_path, "w") as f:
+                json.dump(resolved_variables_json, f, ensure_ascii=False, indent=2)
+            print(f"Resolved variables saved to: {save_path}")
+            
+            # adding transaction that need to be processed to the queue
+            for resolved_variable in resolved_variables:
+                if resolved_variable.transaction_source is not None:
+                    new_transaction_id = resolved_variable.transaction_source.transaction_id
+                    if new_transaction_id not in routine_transactions:
+                        transaction_queue.append(new_transaction_id)
+                        
+            # adding transaction data to the routine transactions
+            routine_transactions[transaction_id] = {
+                "request": transaction["request"],
+                "extracted_variables": extracted_variables.model_dump(),
+                "resolved_variables": [resolved_variable.model_dump() for resolved_variable in resolved_variables]
+            }
+            
+        # construct the routine
+        routine = self.construct_routine(routine_transactions)
+        
+        print(f"Finalized routine construction! Routine saved to: {save_path}")
+
+        # save the routine
+        save_path = os.path.join(self.output_dir, f"routine.json")
+        with open(save_path, "w") as f:
+            json.dump(routine.model_dump(), f, ensure_ascii=False, indent=2) 
+        print(f"Routine saved to: {save_path}")
+        
+        # productionize the routine
+        print(f"Productionizing the routine...")
+        routine = self.productionize_routine(routine)
+        with open(save_path, "w") as f:
+            json.dump(routine.model_dump(), f, ensure_ascii=False, indent=2) 
+        print(f"Routine saved to: {save_path}")
+    
+        # get the test parameters
+        print(f"Getting test parameters...")
+        test_parameters = self.get_test_parameters(routine)
+        test_parameters_dict = {value.name: value.value for value in test_parameters.parameters}
+        
+        # save the test parameters
+        save_path = os.path.join(self.output_dir, f"test_parameters.json")
+        with open(save_path, "w") as f:
+            json.dump(test_parameters_dict, f, ensure_ascii=False, indent=2)
+        print(f"Test parameters saved to: {save_path}")
+        
+    
+        
+    def identify_transaction(self) -> TransactionIdentificationResponse:
+        """
+        Identify the network transactions that directly correspond to the user's requested task.
+        """
+        if self.current_transaction_identification_attempt == 0:
+            self.message_history = [
+                {
+                    "role": "system",
+                    "content": self.SYSTEM_PROMPT_IDENTIFY_TRANSACTIONS
+                },
+                {
+                    "role": "user",
+                    "content": f"Task description: {self.task_description}"
+                },
+                {
+                    "role": "user",
+                    "content": f"These are the possible network transaction ids you can choose from: {self.context_manager.get_all_transaction_ids()}"
+                },
+                {
+                    "role": "user",
+                    "content": f"Please respond in the following format: {TransactionIdentificationResponse.model_json_schema()}"
+                }
+            ]
+        else:
+            message = (
+                f"Please try again to identify the network transactions that directly correspond to the user's requested task."
+                f"Respond in the following format: {TransactionIdentificationResponse.model_json_schema()}"
+            )
+            self._add_to_message_history("user", message)
+            
+        
+        # call to the LLM API
+        response = self.client.responses.create(
+            model=self.llm_model,
+            input=self.message_history if self.current_transaction_identification_attempt == 0 else [self.message_history[-1]],
+            previous_response_id=self.last_response_id,
+            tools=self.tools,
+            tool_choice="required",
+        )
+        
+        # save the response id
+        self.last_response_id = response.id
+        
+        # collect the text from the response
+        response_text = collect_text_from_response(response)
+        self._add_to_message_history("assistant", response_text)
+        
+        # parse the response to the pydantic model
+        parsed_response = llm_parse_text_to_model(
+            text=response_text,
+            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+            pydantic_model=TransactionIdentificationResponse,
+            client=self.client,
+            llm_model='gpt-5-nano'
+        )
+        self._add_to_message_history("assistant", parsed_response.model_dump_json())
+        
+        # return the parsed response
+        return parsed_response
+
+
+    def confirm_indetified_transaction(
+        self,
+        identified_transaction: TransactionIdentificationResponse,
+    ) -> TransactionConfirmationResponse:
+        """
+        Confirm the identified network transaction that directly corresponds to the user's requested task.
+        """
+        
+        # add the transaction to the vectorstore
+        metadata = {"uuid": str(uuid4())}
+        self.context_manager.add_transaction_to_vectorstore(
+            transaction_id=identified_transaction.transaction_id, metadata=metadata
+        )
+        
+        # temporarily update the tools to specifically search through these transactions
+        tools = [
+            {
+                "type": "file_search",
+                "vector_store_ids": [self.context_manager.vectorstore_id],
+                "filters": {
+                    "type": "eq",
+                    "key": "uuid",
+                    "value": [metadata["uuid"]]
+                }
+            }
+        ]
+        
+        # update the message history with request to confirm the identified transaction
+        message = (
+            f"{identified_transaction.transaction_id} have been added to the vectorstore in full (including response bodies)."
+            "Please confirm that the identified transaction is correct and that it directly corresponds to the user's requested task:"
+            f"{self.task_description}"
+            f"Please respond in the following format: {TransactionConfirmationResponse.model_json_schema()}"
+        )
+        self._add_to_message_history("user", message)
+        
+        # call to the LLM API for confirmation that the identified transaction is correct
+        response = self.client.responses.create(
+            model=self.llm_model,
+            input=[self.message_history[-1]],
+            previous_response_id=self.last_response_id,
+            tools=tools,
+            tool_choice="required", # forces the LLM to look at the newly added files to the vectorstore
+        )
+        
+        # save the response id
+        self.last_response_id = response.id
+        
+        # collect the text from the response
+        response_text = collect_text_from_response(response)
+        self._add_to_message_history("assistant", response_text)
+        
+        # parse the response to the pydantic model
+        parsed_response = llm_parse_text_to_model(
+            text=response_text,
+            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+            pydantic_model=TransactionConfirmationResponse,
+            client=self.client,
+            llm_model='gpt-5-nano'
+        )
+        
+        return parsed_response
+    
+    
+    def extract_variables(self, transaction_id: str) -> ExtractedVariableResponse:
+        """
+        Extract the variables from the transaction.
+        """
+        
+        # get the transaction
+        transaction = self.context_manager.get_transaction_by_id(transaction_id)
+        
+        # get all transaction ids by request url
+        transaction_ids = self.context_manager.get_transaction_ids_by_request_url(transaction["request"]["url"])
+        
+        # get the requests of the identified transactions
+        transactions = []
+        for transaction_id in transaction_ids:
+            transaction = self.context_manager.get_transaction_by_id(transaction_id)
+            
+            # Handle response_body - truncate if it's a string
+            response_body = transaction["response_body"]
+            if response_body is None:
+                response_body = "No response body found"
+            if isinstance(response_body, str) and len(response_body) > 500:
+                response_body = response_body[:500] + "..."
+            elif isinstance(response_body, (dict, list)):
+                # If it's JSON data, convert to string and truncate
+                response_body_str = json.dumps(response_body, ensure_ascii=False)
+                if len(response_body_str) > 500:
+                    response_body = response_body_str[:500] + "..."
+                else:
+                    response_body = response_body_str
+            
+            transactions.append(
+                {
+                    "request": transaction["request"],
+                    "response": transaction["response"],
+                    "response_body": response_body
+                }
+            )
+        
+        # add message to the message history
+        message = (
+            f"Please extract the variables from the requests of identified network transactions: {transactions}"
+            f"Please respond in the following format: {ExtractedVariableResponse.model_json_schema()}"
+            "Mark each variable with requires_resolution=True if we need to dynamically resolve this variable at runtime."
+            "If we can most likely hardcode this value, mark requires_resolution=False."
+            "system variables are related to the device or browser environment, and are not used to identify the user."
+            "token and cookie values are not used to identify the user: these may need to be resolved at runtime."
+        )
+        
+        self._add_to_message_history("user", message)
+        
+        # call to the LLM API for extraction of the variables
+        response = self.client.responses.create(
+            model=self.llm_model,
+            input=[self.message_history[-1]],
+            previous_response_id=self.last_response_id,
+            tools=self.tools,
+            tool_choice="required" if len(transactions) > 1 else "auto",
+        )
+        
+        # save the response id
+        self.last_response_id = response.id
+        
+        # collect the text from the response
+        response_text = collect_text_from_response(response)
+        self.message_history.append({"role": "assistant","content": response_text})
+        
+        # parse the response to the pydantic model
+        parsed_response = llm_parse_text_to_model(
+            text=response_text,
+            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+            pydantic_model=ExtractedVariableResponse,
+            client=self.client,
+            llm_model="gpt-5-nano"
+        )
+        self._add_to_message_history("assistant", parsed_response.model_dump_json())
+        
+        return parsed_response
+    
+    def resolve_variables(self, extracted_variables: ExtractedVariableResponse) -> list[ResolvedVariableResponse]:
+        """
+        Resolve the variables from the extracted variables.
+        """
+        
+        # get the latest timestamp
+        max_timestamp = self.context_manager.get_transaction_timestamp(extracted_variables.transaction_id)
+        
+        # get a list of cookies and tokens that require resolution
+        variables_to_resolve = [
+            var for var in extracted_variables.variables if var.requires_resolution and
+            var.type in [
+                VariableType.COOKIE,
+                VariableType.TOKEN
+            ]
+        ]
+        
+        resolved_variable_responses = []
+        
+        # for each variable to resolve, try to find the source of the variable in the storage and transactions
+        for variable in variables_to_resolve:
+            
+            # get the storage objects that contain the value and are before the latest timestamp
+            storage_sources = self.context_manager.scan_storage_for_value(
+                value=variable.observed_value
+            )
+            
+            # get the transaction ids that contain the value and are before the latest timestamp
+            transaction_ids = self.context_manager.scan_transaction_responses(
+                value=variable.observed_value, max_timestamp=max_timestamp
+            )
+            
+            # add the transactions to the vectorstore
+            uuid = str(uuid4())
+            for transaction_id in transaction_ids:
+                self.context_manager.add_transaction_to_vectorstore(
+                    transaction_id=transaction_id,
+                    metadata={"uuid": uuid}
+                )
+            
+            # construct the message to the LLM
+            message = (
+                f"Please resolve the variable: {variable.observed_value}"
+                f"The variable was found in the following storage sources: {storage_sources}"
+                f"The variable was found in the following transaction sources: {transaction_ids}"
+                f"These transactions are added to the vectorstore in full (including response bodies)."
+                f"Please respond in the following format: {ResolvedVariableResponse.model_json_schema()}"
+                f"Dot paths should be like this: 'key.data.items[0].id', 'path.to.valiable.0.value', etc."
+                f"For paths in transaction responses, start with the first key of the response body"
+                f"For paths in storage, start with the cookie, local storage, or session storage entry name"
+            )
+            self._add_to_message_history("user", message)
+            
+            # custom tools to force the LLM to look at the newly added transactions to the vectorstore
+            tools = [
+                {
+                    "type": "file_search",
+                    "vector_store_ids": [self.context_manager.vectorstore_id],
+                    "filters": {
+                        "type": "eq",
+                        "key": "uuid",
+                        "value": [uuid]
+                    }
+                }
+            ]
+            
+            # call to the LLM API for resolution of the variable
+            response = self.client.responses.create(
+                model=self.llm_model,
+                input=[self.message_history[-1]],
+                previous_response_id=self.last_response_id,
+                tools=tools,
+                tool_choice="required",
+            )
+            
+            # save the response id
+            self.last_response_id = response.id
+            
+            # collect the text from the response
+            response_text = collect_text_from_response(response)
+            self._add_to_message_history("assistant", response_text)
+            
+            # parse the response to the pydantic model
+            parsed_response = llm_parse_text_to_model(
+                text=response_text,
+                context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+                pydantic_model=ResolvedVariableResponse,
+                client=self.client,
+                llm_model="gpt-5-nano"
+            )
+            self._add_to_message_history("assistant", parsed_response.model_dump_json())
+            
+            resolved_variable_responses.append(parsed_response)
+            
+            if not parsed_response.session_storage_source and not parsed_response.transaction_source:
+                print(f"[WARNING] Not able to resolve variable: {parsed_response.variable.name}. Harcoding to observed value: {parsed_response.variable.observed_value}")
+                
+            if parsed_response.session_storage_source and parsed_response.transaction_source:
+                print(f"[INFO] Variable: {parsed_response.variable.name} is resolved from both session storage and transaction. It is reasonable to use either source (fetch is slower but more stable)")
+            
+        return resolved_variable_responses
+
+
+    def construct_routine(self, routine_transactions: dict, max_attempts: int = 3) -> Routine:
+        """
+        Construct the routine from the routine transactions.
+        """
+        message = (
+            f"Please construct the routine from the routine transactions: {routine_transactions}. "
+            f"Please respond in the following format: {Routine.model_json_schema()}. "
+            f"Fetch operations (1 to 1 with transactions) should be constructed as follows: {RoutineFetchOperation.model_json_schema()}. "
+            f"First step of the routine should be to navigate to the target web page and sleep for a bit of time (2-3 seconds). "
+            f"All fetch operations should be constructed as follows: {RoutineFetchOperation.model_json_schema()}. "
+            f"Parameters are only the most important arguments. "
+            f"You can inject variables by using the following syntax: {{{{parameter_name}}}} {{{{cookie:cookie_name}}}} {{{{sessionStorage:key.path.to.0.value}}}} {{{{local_storage:local_storage_name}}}}. "
+            f"You can hardcode unresolved variables to their observed values. "
+            f"You will want to navigate to the target page, then perform the fetch operations in the proper order. "
+            f"Browser variables should be hardcoded to observed values. "
+            f"If tokens or cookies are resolved, they should point to values in the session storage."
+            f"You can navigate to other pages in the routine by using the navigate operation. "
+            f"Endpoints of the fetch operations should mimick observed network traffic requests! "
+            f"Every fetch operation result is written to session storage. "
+            f"At the end of the routine return the proper session storage value (likely containing the last fetch operation result). "
+            f"To feed output of a fetch into a subsequent fetch, you can save result to session storage and then use {{sessionStorage:key.to.path}}. "
+        )
+        self._add_to_message_history("user", message)
+        
+        current_attempt = 0
+        
+        while current_attempt < max_attempts:
+            
+            current_attempt += 1
+            
+            # call to the LLM API for construction of the routine
+            response = self.client.responses.create(
+                model=self.llm_model,
+                input=[self.message_history[-1]],
+                previous_response_id=self.last_response_id,
+                tools=self.tools,
+                tool_choice="required",
+            )
+            
+            # save the response id
+            self.last_response_id = response.id
+            
+            # collect the text from the response
+            response_text = collect_text_from_response(response)
+            self._add_to_message_history("assistant", response_text)
+            
+            # parse the response to the pydantic model
+            routine = llm_parse_text_to_model(
+                text=response_text,
+                context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+                pydantic_model=Routine,
+                client=self.client,
+                llm_model=self.llm_model
+            )
+            self._add_to_message_history("assistant", routine.model_dump_json())
+            
+            
+            # validate the routine
+            successful, errors, exception = routine.validate()
+            if successful:
+                return routine
+            
+            message = (
+                f"Execution failed with error: {exception}"
+                f"Routine validation failed: {errors}"
+                f"Please try again to construct the routine."
+            )
+            self._add_to_message_history("user", message)
+            
+            
+        raise Exception(f"Failed to construct the routine after {max_attempts} attempts")
+    
+    def productionize_routine(self, routine: Routine) -> Routine:
+        
+        message = (
+            f"Please productionize the routine (from previosu step): {routine.model_dump_json()}"
+            f"You need to clean up this routine to follow the following format: {ProductionRoutine.model_json_schema()}"
+            f"Please respond in the following format: {ProductionRoutine.model_json_schema()}"
+            f"You immediate output needs to be a valid JSON object that conforms to the production routine schema."
+        )
+        self._add_to_message_history("user", message)
+    
+        
+        # call to the LLM API for productionization of the routine
+        response = self.client.responses.create(
+            model=self.llm_model,
+            input=[self.message_history[-1]],
+            previous_response_id=self.last_response_id,
+        )
+        
+        # save the response id
+        self.last_response_id = response.id
+        
+        # collect the text from the response
+        response_text = collect_text_from_response(response)
+        self._add_to_message_history("assistant", response_text)
+        
+        # parse the response to the pydantic model
+        production_routine = manual_llm_parse_text_to_model(
+            text=response_text,
+            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+            pydantic_model=ProductionRoutine,
+            client=self.client,
+            llm_model=self.llm_model
+        )
+        
+        return production_routine
+        
+    
+    def get_test_parameters(self, routine: Routine) -> TestParametersResponse:
+        """
+        Get the test parameters for the routine.
+        """
+        message = (
+            f"Write a dictionary of parameters to test this routine (from previous step): {routine.model_dump_json()}"
+            f"Please respond in the following format: {TestParametersResponse.model_json_schema()}"
+            f"Ensure all parameters are present and have valid values."
+        )
+        self._add_to_message_history("user", message)
+        
+        # call to the LLM API for getting the test parameters
+        response = self.client.responses.create(
+            model=self.llm_model,
+            input=[self.message_history[-1]],
+            previous_response_id=self.last_response_id,
+        )
+        
+        # save the response id
+        self.last_response_id = response.id
+        
+        # collect the text from the response
+        response_text = collect_text_from_response(response)
+        self._add_to_message_history("assistant", response_text)
+        
+        # parse the response to the pydantic model
+        parsed_response = llm_parse_text_to_model(
+            text=response_text,
+            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+            pydantic_model=TestParametersResponse,
+            client=self.client,
+            llm_model="gpt-5-nano"
+        )
+        self._add_to_message_history("assistant", parsed_response.model_dump_json())
+        
+        return parsed_response
+
+
+    def _add_to_message_history(self, role: str, content: str) -> None:
+        self.message_history.append({"role": role, "content": content})
+        with open(os.path.join(self.output_dir, "message_history.json"), "w") as f:
+            json.dump(self.message_history, f, ensure_ascii=False, indent=2)

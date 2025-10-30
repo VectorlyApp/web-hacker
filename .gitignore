@@ -205,3 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# MACOS
+.DS_Store
+
+# output directories
+cdp_captures/
+routine_discovery_output/
