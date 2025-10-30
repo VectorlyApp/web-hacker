@@ -1,5 +1,5 @@
 from enum import StrEnum
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from src.data_models.network import Method
 
 class ConfidenceLevel(StrEnum):
@@ -35,8 +35,8 @@ class VariableType(StrEnum):
     ARGUMENT = "argument"
     COOKIE = "cookie"
     TOKEN = "token"
-    SYSTEM_VARIABLE = "system_variable"
-    CONSTANT = "constant"
+    BROWSER_VARIABLE = "browser_variable"
+    # CONSTANT = "constant"
     
 
 class Variable(BaseModel):
@@ -44,6 +44,7 @@ class Variable(BaseModel):
     A variable that was extracted from the network transaction.
     """
     type: VariableType
+    requires_resolution: bool = Field(description="Whether the variable requires resolution.")
     name: str
     observed_value: str
     description: str
@@ -57,3 +58,30 @@ class ExtractedVariableResponse(BaseModel):
     variables: list[Variable]
     explanation: str
 
+class SessionStorageType(StrEnum):
+    COOKIE = "cookie"
+    LOCAL_STORAGE = "localStorage"
+    SESSION_STORAGE = "sessionStorage"
+    
+class SessionStorageSource(BaseModel):
+    """
+    Source of the session storage.
+    """
+    type: SessionStorageType = Field(description="The type of the session storage.")
+    dot_path: str = Field(description="The dot path to the variable in the session storage.")
+    
+class TransactionSource(BaseModel):
+    """
+    Source of the transaction.
+    """
+    transaction_id: str = Field(description="The ID of the transaction that contains the variable.")
+    dot_path: str = Field(description="The dot path to the variable in the transaction response body.")
+    
+class ResolvedVariableResponse(BaseModel):
+    """
+    Response from the LLM for resolving cookies and tokens.
+    """
+    variable: Variable
+    session_storage_source: SessionStorageSource | None = None
+    transaction_source: TransactionSource | None = None
+    explanation: str

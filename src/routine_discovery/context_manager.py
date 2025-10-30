@@ -86,20 +86,39 @@ class ContextManager(BaseModel):
         """
         
         result = {}
-        with open(os.path.join(self.transactions_dir, transaction_id, "request.json"), "r") as f:
-            result["request"] = json.load(f)
-        with open(os.path.join(self.transactions_dir, transaction_id, "response.json"), "r") as f:
-            result["response"] = json.load(f)
         
-        # Handle response body - try JSON first, fallback to text
-        response_body_path = os.path.join(self.transactions_dir, transaction_id, "response_body.json")
         try:
+            with open(os.path.join(self.transactions_dir, transaction_id, "request.json"), "r") as f:
+                result["request"] = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            result["request"] = "No request found for transaction {transaction_id}"
+            
+        try:
+            with open(os.path.join(self.transactions_dir, transaction_id, "response.json"), "r") as f:
+                result["response"] = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            result["response"] = "No response found for transaction {transaction_id}"
+        
+        try:
+            response_body_path = os.path.join(self.transactions_dir, transaction_id, "response_body.json")
             with open(response_body_path, "r") as f:
                 result["response_body"] = json.load(f)
+                
         except (json.JSONDecodeError, FileNotFoundError):
-            # If it's not valid JSON or file doesn't exist, read as text
-            with open(response_body_path, "r", encoding='utf-8', errors='replace') as f:
-                result["response_body"] = f.read()
+            # get the the response body filename and read as text
+            response_body_file_name = None
+            files = os.listdir(os.path.join(self.transactions_dir, transaction_id))
+            for file in files:
+                if "response_body" in file:
+                    response_body_file_name = file
+                    break
+            if response_body_file_name is None:
+                result["response_body"] = "No response body found for transaction {transaction_id}"
+            else:
+                result["response_body"] = open(
+                    os.path.join(
+                        self.transactions_dir, transaction_id, response_body_file_name
+                    ), "r", encoding='utf-8', errors='replace').read()
             
         return result
     
@@ -198,3 +217,49 @@ class ContextManager(BaseModel):
                 continue
         return transaction_ids
         
+        
+    def scan_transaction_responses(self, value: str, max_timestamp: str | None = None) -> list[str]:
+        """
+        Scan the requests and responses for a value.
+        
+        Args:
+            value: The value to scan for in the requests and responses.
+            max_timestamp: latest timestamp to scan for.
+        Returns:
+            A list of transactions that contain the value in the response body.
+        """
+        all_transaction_ids = self.get_all_transaction_ids()
+        results = []
+        for transaction_id in all_transaction_ids:
+            transaction = self.get_transaction_by_id(transaction_id)
+            if value in transaction["response_body"] and (max_timestamp is None or self.get_transaction_timestamp(transaction_id) <= max_timestamp):
+                results.append(transaction)
+        return results
+    
+
+    def scan_storage_for_value(self, value: str, max_timestamp: str | None = None) -> list[str]:
+        """
+        Scan the storage for a value.
+        
+        Args:
+            value: The value to scan for in the storage.
+            max_timestamp: latest timestamp to scan for.
+        Returns:
+            A list of storage items that contain the value.
+        """
+        results = []
+        with open(self.storage_jsonl_path, "r", encoding='utf-8', errors='replace') as f:
+            for line in f:
+                obj = json.loads(line)
+                if value in line and (max_timestamp is None or obj["timestamp"] <= max_timestamp):
+                    results.append(line)
+        return results
+
+
+    def get_transaction_timestamp(self, transaction_id: str) -> str:
+        """
+        Get the timestamp of a transaction.
+        """
+        #TODO: cleaner way to get the timestamp
+        transaction_id = transaction_id.split("_")[1]
+        return transaction_id

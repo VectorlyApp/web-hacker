@@ -44,11 +44,12 @@ def main() -> None:
         consolidated_transactions_path=os.path.join(args.cdp_captures_dir, "network/consolidated_transactions.json"),
         storage_jsonl_path=os.path.join(args.cdp_captures_dir, "storage/events.jsonl")
     )
+    
     print(f"Context manager initialized.")
     
     # make the vectorstore
     context_manager.make_vectorstore()
-    print(f"Vectorstore made: {context_manager.vectorstore_id}")
+    print(f"Vectorstore created: {context_manager.vectorstore_id}")
     
     # initialize routine discovery agent
     routine_discovery_agent = RoutineDiscoveryAgent(
@@ -56,7 +57,7 @@ def main() -> None:
         context_manager=context_manager,
         task_description=args.task_description,
         llm_model=args.llm_model,
-        debug_dir=os.path.join(args.output_dir, "llm_debug"),
+        output_dir=args.output_dir,
     )
     print(f"Routine discovery agent initialized.")
     
@@ -67,7 +68,6 @@ def main() -> None:
     # run the routine discovery agent
     routine_discovery_agent.run()
     print(f"Routine discovery agent run complete")
-
 
 
 if __name__ == "__main__":

@@ -1,8 +1,0 @@
-{
-  "transaction_id": "20251028_1761690780571_www.amtrak.com_services_MapDataService_AutoCompleterArcgis_getResponseList",
-  "description": "ArcGIS-backed station autocomplete API used by Amtrak; returns station suggestions for a given searchTerm.",
-  "url": "https://www.amtrak.com/services/MapDataService/AutoCompleterArcgis/getResponseList?searchTerm=bos",
-  "method": "GET",
-  "explanation": "This request is issued while typing into the station field and queries the AutoCompleterArcgis service with a searchTerm parameter (example shows searchTerm=bos). The captured transaction confirms the exact endpoint and method for the station autocomplete flow. For context, the site also pulls a full station catalog used to power suggestions from https://www.amtrak.com/services/data.stations.json, which complements the live autocomplete behavior.",
-  "confidence_level": "high"
-}

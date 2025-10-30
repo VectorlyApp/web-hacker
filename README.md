@@ -3,8 +3,33 @@
 Reverse engineer any web app!
 
 ## Prerequisits
-
+ - Python 3.11+
+ - Google Chrome (stable)
+ - uv (Python package manager)
+   - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+   - Windows (PowerShell): `iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex`
+ - OpenAI API key
 ## Setup Your Environment
+```bash
+# 1) Clone and enter the repo
+git clone <repo-url>
+cd web-hacker
+
+# 2) Create & activate virtual environment (uv)
+uv venv .venv
+source .venv/bin/activate   # Windows: .venv\\Scripts\\activate
+
+# 3) Install in editable mode via uv (pip-compatible interface)
+uv pip install -e .
+
+# 4) Configure environment
+cp .env.example .env  # then edit values
+# or set directly
+export OPENAI_API_KEY="sk-..."
+
+# 5) Smoke test
+python -c "import src; print('env ok')"
+```
 
 ## Launch Chrome in Debug Mode
 
@@ -39,8 +64,8 @@ curl http://127.0.0.1:9222/json/version
 }
 ```
 
+### Instructions for Windows
 
 ## Monitor Browser While Performing Some Task
-
 
 ## Run Routine Discovery Pipeline
