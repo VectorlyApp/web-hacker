@@ -3,6 +3,7 @@ from openai import OpenAI
 from typing import Type
 
 
+
 def llm_parse_text_to_model(
     text: str,
     context: str,
@@ -52,6 +53,52 @@ def llm_parse_text_to_model(
             
     raise Exception(f"Failed to parse text to model after {n_tries} tries")
 
+
+def manual_llm_parse_text_to_model(
+    text: str,
+    context: str,
+    pydantic_model: Type[BaseModel],
+    client: OpenAI,
+    llm_model: str = "gpt-5-nano",
+    n_tries: int = 3,
+) -> BaseModel:
+    """
+    Manual LLM parse text to model. (without using structured output)
+    """
+    
+    SYSTEM_PROMPT = f"""
+    You are a helpful assistant that parses text to a pydantic model.
+    You must conform to the provided pydantic model schema.
+    """
+    
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Context: {context}"},
+        {"role": "user", "content": f"Text to parse: {text}"},
+        {"role": "user", "content": f"Model JSON schema: {pydantic_model.model_json_schema()}"},
+        {"role": "user", "content": f"Please respond in the following format above. Your response must be a valid JSON object."}
+    ]
+    
+    for current_try in range(n_tries):
+        try:
+            response = client.chat.completions.create(
+                model=llm_model,
+                messages=messages,
+            )
+            messages.append({"role": "assistant", "content": response.choices[0].message.content})
+            text = response.choices[0].message.content
+            
+            parsed_model = pydantic_model(json.loads(text))
+            
+            return parsed_model
+        
+        except Exception as e:
+            print(f"Try {current_try + 1} failed with error: {e}")
+            messages.append({"role": "user", "content": f"Previous attempt failed with error: {e}. Please try again."})
+            
+    raise Exception(f"Failed to parse text to model after {n_tries} tries")
+
+    
 
 def collect_text_from_response(resp) -> str:
     """

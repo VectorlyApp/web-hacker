@@ -8,9 +8,11 @@ from src.data_models.llm_responses import (
     ExtractedVariableResponse,
     TransactionConfirmationResponse,
     VariableType,
-    ResolvedVariableResponse
+    ResolvedVariableResponse,
+    TestParametersResponse
 )
-from src.data_models.routine import Routine, RoutineFetchOperation
+from src.data_models.production_routine import Routine as ProductionRoutine
+from src.data_models.dev_routine import Routine, RoutineFetchOperation
 from uuid import uuid4
 import os
 
@@ -87,11 +89,11 @@ class RoutineDiscoveryAgent(BaseModel):
             raise Exception("Failed to identify the network transactions that directly correspond to the user's requested task.")
         
         # save the indentified transactions
-        with open(os.path.join(self.output_dir, "identified_transactions.json"), "w") as f:
+        save_path = os.path.join(self.output_dir, "root_transaction.json")
+        with open(save_path, "w") as f:
             json.dump(identified_transaction.model_dump(), f, ensure_ascii=False, indent=2)
             
-        print(f"Identified transaction: {identified_transaction.transaction_id}")
-        print(f"Identified transaction saved to: {os.path.join(self.output_dir, 'identified_transactions.json')}")
+        print(f"Identified transaction: {identified_transaction.transaction_id} saved to: {save_path}")
         
         # populating the transaction queue with the identified transaction
         transaction_queue = [identified_transaction.transaction_id]
@@ -102,34 +104,35 @@ class RoutineDiscoveryAgent(BaseModel):
         # processing the transaction queue (breadth-first search)
         while (len(transaction_queue) > 0):
             
-            print(f"Processing transaction: {transaction_id}")
+            # make the output directory for the transaction
+            os.makedirs(os.path.join(self.output_dir, f"transaction_{len(routine_transactions)}"), exist_ok=True)
             
             # dequeue the transaction
             transaction_id = transaction_queue.pop(0)
+            print(f"Processing transaction: {transaction_id}")
             
             # get the transaction
             transaction = self.context_manager.get_transaction_by_id(transaction_id)
             
+            # extract variables from the transaction
             print("Extract variables (args, cookies, tokens, browser variables) from the identified transaction...")
             extracted_variables = self.extract_variables(transaction_id)
             
-            save_path = os.path.join(self.output_dir, f"extracted_variables_{len(routine_transactions)}.json")
-            
+            # save the extracted variables
+            save_path = os.path.join(self.output_dir, f"transaction_{len(routine_transactions)}", "extracted_variables.json")
             with open(save_path, "w") as f:
                 json.dump(extracted_variables.model_dump(), f, ensure_ascii=False, indent=2)
-                
             print(f"Extracted variables saved to: {save_path}")
                 
-            # Step 3: Resolve cookies and tokens
+            # resolve cookies and tokens
             print("Resolving cookies and tokens...")
             resolved_variables = self.resolve_variables(extracted_variables)
             resolved_variables_json = [resolved_variable.model_dump() for resolved_variable in resolved_variables]
             
-            save_path = os.path.join(self.output_dir, f"resolved_variables_{len(routine_transactions)}.json")
-            
+            # save the resolved variables
+            save_path = os.path.join(self.output_dir, f"transaction_{len(routine_transactions)}", "resolved_variables.json")
             with open(save_path, "w") as f:
                 json.dump(resolved_variables_json, f, ensure_ascii=False, indent=2)
-                
             print(f"Resolved variables saved to: {save_path}")
             
             # adding transaction that need to be processed to the queue
@@ -146,13 +149,6 @@ class RoutineDiscoveryAgent(BaseModel):
                 "resolved_variables": [resolved_variable.model_dump() for resolved_variable in resolved_variables]
             }
             
-            save_path = os.path.join(self.output_dir, f"routine_transactions.json")
-            
-            with open(save_path, "w") as f:
-                json.dump(routine_transactions, f, ensure_ascii=False, indent=2)
-                
-            print(f"Routine transactions saved to: {save_path}")
-            
         # construct the routine
         routine = self.construct_routine(routine_transactions)
         
@@ -160,11 +156,28 @@ class RoutineDiscoveryAgent(BaseModel):
 
         # save the routine
         save_path = os.path.join(self.output_dir, f"routine.json")
-        
         with open(save_path, "w") as f:
-            json.dump(routine.model_dump(), f, ensure_ascii=False, indent=2)
-            
-        return routine
+            json.dump(routine.model_dump(), f, ensure_ascii=False, indent=2) 
+        print(f"Routine saved to: {save_path}")
+        
+        # productionize the routine
+        print(f"Productionizing the routine...")
+        routine = self.productionize_routine(routine)
+        with open(save_path, "w") as f:
+            json.dump(routine.model_dump(), f, ensure_ascii=False, indent=2) 
+        print(f"Routine saved to: {save_path}")
+    
+    
+        # get the test parameters
+        print(f"Getting test parameters...")
+        test_parameters = self.get_test_parameters(routine)
+        
+        # save the test parameters
+        save_path = os.path.join(self.output_dir, f"test_parameters.json")
+        with open(save_path, "w") as f:
+            json.dump(test_parameters.model_dump(), f, ensure_ascii=False, indent=2)
+        print(f"Test parameters saved to: {save_path}")
+        
     
         
     def identify_transaction(self) -> TransactionIdentificationResponse:
@@ -544,7 +557,48 @@ class RoutineDiscoveryAgent(BaseModel):
             
             
         raise Exception(f"Failed to construct the routine after {max_attempts} attempts")
+    
+    def productionize_routine(self, routine: Routine) -> Routine:
         
+    
+    
+    def get_test_parameters(self, routine: Routine) -> dict:
+        """
+        Get the test parameters for the routine.
+        """
+        message = (
+            f"Write a dictionary of parameters to test this routine: {routine.model_dump_json()}"
+            f"Please respond in the following format: {TestParametersResponse.model_json_schema()}"
+            f"Ensure all parameters are present and have valid values."
+        )
+        self._add_to_message_history("user", message)
+        
+        # call to the LLM API for getting the test parameters
+        response = self.client.responses.create(
+            model=self.llm_model,
+            input=[self.message_history[-1]],
+            previous_response_id=self.last_response_id,
+        )
+        
+        # save the response id
+        self.last_response_id = response.id
+        
+        # collect the text from the response
+        response_text = collect_text_from_response(response)
+        self._add_to_message_history("assistant", response_text)
+        
+        # parse the response to the pydantic model
+        parsed_response = llm_parse_text_to_model(
+            text=response_text,
+            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-3:]]),
+            pydantic_model=TestParametersResponse,
+            client=self.client,
+            llm_model="gpt-5-nano"
+        )
+        self._add_to_message_history("assistant", parsed_response.model_dump_json())
+        
+        return parsed_response
+
 
     def _add_to_message_history(self, role: str, content: str) -> None:
         self.message_history.append({"role": role, "content": content})
@@ -552,3 +606,5 @@ class RoutineDiscoveryAgent(BaseModel):
             json.dump(self.message_history, f, ensure_ascii=False, indent=2)
             
             
+            
+    

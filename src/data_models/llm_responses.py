@@ -85,3 +85,16 @@ class ResolvedVariableResponse(BaseModel):
     session_storage_source: SessionStorageSource | None = None
     transaction_source: TransactionSource | None = None
     explanation: str
+    
+class TestParameter(BaseModel):
+    """
+    A test parameter for a routine.
+    """
+    name: str
+    value: str
+    
+class TestParametersResponse(BaseModel):
+    """
+    Response from the LLM for getting the test parameters for a routine.
+    """
+    parameters: list[TestParameter]
