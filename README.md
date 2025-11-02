@@ -237,7 +237,7 @@ python scripts/browser_monitor.py \
   --host 127.0.0.1 \
   --port 9222 \
   --output-dir ./cdp_captures \
-  --url https://www.example.com
+  --url about:blank
 ```
 
 Attach to existing tab:
@@ -251,7 +251,7 @@ python scripts/browser_monitor.py --tab-id <TAB_ID>
 Create a new tab automatically:
 
 ```
-python scripts/browser_monitor.py --url https://example.com
+python scripts/browser_monitor.py --url about:blank
 ```
 
 Incognito new tab (only when not supplying TAB_ID):
