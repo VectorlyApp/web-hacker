@@ -44,13 +44,16 @@ Example:
 ### Parameters
 
 - Defined as typed inputs (see [`Parameter`](https://github.com/VectorlyApp/web-hacker/blob/main/src/data_models/production_routine.py) class).
-- Each parameter has required `name` and `description` fields, along with `type`, `required`, and optional `default`/`examples`.
-- Parameters are referenced inside operations using placeholder tokens like `"{{paramName}}"` or `\"{{paramName}}\"` (see [Placeholder Interpolation](#placeholder-interpolation-) below).
+- Each parameter has required `name` and `description` fields. Optional fields include `type` (defaults to `string`), `required` (defaults to `true`), `default`, and `examples`.
+- Parameters are referenced inside `operations` using placeholder tokens like `"{{paramName}}"` or `\"{{paramName}}\"` (see [Placeholder Interpolation](#placeholder-interpolation-) below).
+- **Parameter Types**: Supported types include `string`, `integer`, `number`, `boolean`, `date`, `datetime`, `email`, `url`, and `enum`.
+- **Parameter Validation**: Parameters support validation constraints such as `min_length`, `max_length`, `min_value`, `max_value`, `pattern` (regex), `enum_values`, and `format`.
+- **Reserved Prefixes**: Parameter names cannot start with reserved prefixes: `sessionStorage`, `localStorage`, `cookie`, `meta`, `uuid`, `epoch_milliseconds`.
+
 
 ### Operations
 
-Operations define the executable steps of a Routine.  
-They are represented as a **typed list** (see [`RoutineOperationUnion`](https://github.com/VectorlyApp/web-hacker/blob/main/src/data_models/production_routine.py)) and are executed sequentially by the browser agent.
+Operations define the executable steps of a Routine. They are represented as a **typed list** (see [`RoutineOperationUnion`](https://github.com/VectorlyApp/web-hacker/blob/main/src/data_models/production_routine.py)) and are executed sequentially by a browser.
 
 Each operation specifies a `type` and its parameters:
 
@@ -68,7 +71,10 @@ Each operation specifies a `type` and its parameters:
     "type": "fetch", 
     "endpoint": { 
       "method": "GET", 
-      "url": "https://api.example.com" 
+      "url": "https://api.example.com",
+      "headers": {},
+      "body": {},
+      "credentials": "same-origin"
     }, 
     "session_storage_key": "userData" 
   }
@@ -103,13 +109,14 @@ This defines a deterministic flow: open → wait → authenticate → return a s
 
 Placeholders inside operation fields are resolved at runtime:
 
-- Parameter placeholders: `"{{paramName}}"` or `\"{{paramName}}\"` → substituted from routine parameters
-- Storage placeholders (read values from the current session):
-  - `{{sessionStorage:myKey.path.to.value}}`
-  - `{{localStorage:myKey}}`
-  - `{{cookie:CookieName}}`
+- **Parameter placeholders**: `"{{paramName}}"` or `\"{{paramName}}\"` → substituted from routine parameters
+- **Storage placeholders** (read values from the current session):
+  - `{{sessionStorage:myKey.path.to.value}}` — access nested values in sessionStorage
+  - `{{localStorage:myKey}}` — access localStorage values
+  - `{{cookie:CookieName}}` — read cookie values
+  - `{{meta:name}}` — read meta tag content (e.g., `<meta name="csrf-token">`)
 
-**Important:** Currently, `sessionStorage`, `localStorage`, and `cookie` placeholder resolution is supported only inside fetch `headers` and `body`. Future versions will support interpolation anywhere in operations.
+**Important:** Currently, `sessionStorage`, `localStorage`, `cookie`, and `meta` placeholder resolution is supported only inside fetch `headers` and `body`. Future versions will support interpolation anywhere in operations.
 
 Interpolation occurs before an operation executes. For example, a fetch endpoint might be:
 
@@ -306,6 +313,8 @@ routine_discovery_output/
 
 ### 3. Execute the Discovered Routines 🏃
 
+⚠️ **Prerequisite:** Make sure Chrome is still running in debug mode (see [Launch Chrome in Debug Mode](#launch-chrome-in-debug-mode-🐞) above). The routine execution script connects to the same Chrome debug session on `127.0.0.1:9222`.
+
 ⚠️ **Important:** If you have a string-typed parameter used in a JSON body field, it may need to be escaped. When the agent generates routines, string parameters are sometimes placed as `"{{PARAM}}"` when they should be `"\"{{PARAM}}\""` to ensure proper JSON string escaping.
 
 **Example:** If you see:
@@ -322,27 +331,28 @@ This ensures the parameter value is properly quoted as a JSON string when substi
 Run the example routine: 
 
 ```
-# Using a parameters file (see examples in `scripts/execute_routine.py`):
+# Using a parameters file:
 
 python scripts/execute_routine.py \
-  --routine-path example_data/amtrak_one_way_train_search_routine.json \
-  --parameters-path example_data/amtrak_one_way_train_search_input.json
+  --routine-path example_routines/amtrak_one_way_train_search_routine.json \
+  --parameters-path example_routines/amtrak_one_way_train_search_input.json
 
-
-# Or pass parameters inline (JSON string) — matches the script’s examples:
+# Or pass parameters inline (JSON string):
 
 python scripts/execute_routine.py \
-  --routine-path example_data/amtrak_one_way_train_search_routine.json \
-  --parameters-dict '{"origin": "boston", "destination": "new york", "departureDate": "2026-03-22"}'
+  --routine-path example_routines/amtrak_one_way_train_search_routine.json \
+  --parameters-dict '{"origin": "BOS", "destination": "NYP", "departureDate": "2026-03-22"}'
 ```
 
-Once you have a routine JSON, run it in a real browser session (same Chrome debug session):
+Run a discovered routine:
 
 ```
 python scripts/execute_routine.py \
-        --routine-path routine_discovery_output/routine.json \
-        --parameters-path routine_discovery_output/test_parameters.json
+  --routine-path routine_discovery_output/routine.json \
+  --parameters-path routine_discovery_output/test_parameters.json
 ```
+
+**Note:** Routines execute in a new incognito tab by default (controlled by the routine's `incognito` field). This ensures clean sessions for each execution.
 
 **Alternative:** Deploy your routine to [console.vectorly.app](https://console.vectorly.app) to expose it as an API endpoint or MCP server for use in production environments.
 
