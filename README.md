@@ -120,7 +120,7 @@ Placeholders inside operation fields are resolved at runtime:
 
 Interpolation occurs before an operation executes. For example, a fetch endpoint might be:
 
-```
+```json
 {
   "type": "fetch",
   "endpoint": {
@@ -270,7 +270,7 @@ Use the CDP browser monitor to block trackers and capture network, storage, and 
 python scripts/browser_monitor.py --host 127.0.0.1 --port 9222 --output-dir ./cdp_captures --url about:blank
 ```
 
-The script will open a new tab (starting at `about:blank`). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` when done; the script will consolidate transactions and produce a HAR automatically.
+The script will open a new tab (starting at `about:blank`). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` or simply close the Chrome window when done; the script will consolidate transactions and produce a HAR automatically.
 
 **Output structure** (under `--output-dir`, default `./cdp_captures`):
 
@@ -285,8 +285,8 @@ cdp_captures/
 │           ├── request.json
 │           ├── response.json
 │           └── response_body.[ext]
-├── storage/
-│   └── events.jsonl
+└── storage/
+    └── events.jsonl
 ```
 
 Tip: Keep Chrome focused while monitoring and perform the target flow (search, checkout, etc.). Press Ctrl+C to stop; the script will consolidate transactions and produce a HTTP Archive (HAR) automatically.
