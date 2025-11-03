@@ -242,43 +242,14 @@ Use the CDP browser monitor to block trackers and capture network, storage, and 
 **Run this command to start monitoring:**
 
 ```bash
-# Basic usage (creates new tab automatically)
 python scripts/browser_monitor.py \
   --host 127.0.0.1 \
   --port 9222 \
   --output-dir ./cdp_captures \
   --url about:blank
-
-# Use existing tab (provide tab ID)
-python scripts/browser_monitor.py <TAB_ID> \
-  --url https://example.com
-
-# Create incognito tab
-python scripts/browser_monitor.py \
-  --incognito \
-  --url https://example.com
-
-# Keep existing cookies/storage (don't clear)
-python scripts/browser_monitor.py \
-  --no-clear-all \
-  --url https://example.com
 ```
 
-**Command Options:**
-- `--host`, `--port` — Chrome DevTools address (default: `127.0.0.1:9222`)
-- `--url` — Initial URL to navigate to (default: `about:blank`)
-- `--output-dir` — Output directory for captures (default: `./cdp_captures`)
-- `--incognito` — Create new tab in incognito mode
-- `--no-navigate` — Don't navigate, just attach to existing tab
-- `--clear-output` / `--keep-output` — Control output directory clearing
-- `--capture-resources` — Resource types to capture (default: `XHR Fetch`)
-- `--no-clear-cookies` — Don't clear cookies before monitoring (cleared by default)
-- `--no-clear-storage` — Don't clear storage before monitoring (cleared by default)
-- `--no-clear-all` — Don't clear cookies or storage (convenience flag)
-
-**Note:** If no tab ID is provided, the script will automatically create a new tab. The tab ID can be obtained from `http://127.0.0.1:9222/json` or Chrome's `chrome://inspect/#devices`.
-
-The script will open a new tab (starting at the specified URL). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` when done; the script will consolidate transactions and produce a HAR automatically.
+The script will open a new tab (starting at `about:blank`). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` when done; the script will consolidate transactions and produce a HAR automatically.
 
 **Output structure** (under `--output-dir`, default `./cdp_captures`):
 
