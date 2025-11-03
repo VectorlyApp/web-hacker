@@ -118,7 +118,7 @@ Interpolation occurs before an operation executes. For example, a fetch endpoint
   "type": "fetch",
   "endpoint": {
     "method": "GET",
-    "url": "https://api.example.com/search?arg1={{argument_1}}&arg2={{argument_2}}",
+    "url": "https://api.example.com/search?paramName1=\"{{paramName1}}\"&paramName2=\"{{paramName1}}\"",
     "headers": {
       "Authorization": "Bearer {{cookie:auth_token}}"
     },
