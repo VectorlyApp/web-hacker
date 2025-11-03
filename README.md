@@ -154,7 +154,7 @@ git clone https://github.com/VectorlyApp/web-hacker.git
 cd web-hacker
 
 # 2) Create & activate virtual environment (uv)
-uv venv .venv
+uv venv --prompt web-hacker
 source .venv/bin/activate   # Windows: .venv\\Scripts\\activate
 
 # 3) Install in editable mode via uv (pip-compatible interface)
