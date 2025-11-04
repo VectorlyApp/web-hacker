@@ -1,3 +1,5 @@
+# pyproject.toml for web-hacker
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -5,14 +7,19 @@ build-backend = "hatchling.build"
 [project]
 name = "web-hacker"
 version = "0.1.0"
-description = "Add your description here"
+description = " Reverse engineer any web app!"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12.3,<3.13"  # pinning to 3.12.x
 dependencies = [
+    "ipykernel>=6.29.5",
     "openai>=2.6.1",
+    "pydantic>=2.11.4",
+    "pylint>=3.0.0",
+    "pytest>=8.3.5",
     "python-dotenv>=1.2.1",
-    "websocket-client>=1.6.0",
     "requests>=2.31.0",
+    "websockets>=15.0.1",
+    "websocket-client>=1.6.0",
 ]
 
 [tool.hatch.build.targets.wheel]

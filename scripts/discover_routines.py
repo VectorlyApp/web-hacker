@@ -1,12 +1,20 @@
 """
 Script for discovering routines from the network transactions.
 """
+
 from argparse import ArgumentParser
+import logging
+import os
+
+from dotenv import load_dotenv
 from openai import OpenAI
+
 from src.routine_discovery.agent import RoutineDiscoveryAgent
 from src.routine_discovery.context_manager import ContextManager
-from dotenv import load_dotenv
-import os
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def main() -> None:
     
@@ -25,10 +33,9 @@ def main() -> None:
     if os.getenv("OPENAI_API_KEY") is None:
         raise ValueError("OPENAI_API_KEY is not set")
     
-    
-    print(f"\n{'-' * 100}")
-    print(f"Starting routine discovery for task:\n{args.task}")
-    print(f"{'-' * 100}\n")
+    logger.info(f"\n{'-' * 100}")
+    logger.info(f"Starting routine discovery for task:\n{args.task}")
+    logger.info(f"{'-' * 100}\n")
     
     # initialize OpenAI client
     openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -45,11 +52,11 @@ def main() -> None:
         storage_jsonl_path=os.path.join(args.cdp_captures_dir, "storage/events.jsonl")
     )
     
-    print(f"Context manager initialized.")
+    logger.info(f"Context manager initialized.")
     
     # make the vectorstore
     context_manager.make_vectorstore()
-    print(f"Vectorstore created: {context_manager.vectorstore_id}")
+    logger.info(f"Vectorstore created: {context_manager.vectorstore_id}")
     
     # initialize routine discovery agent
     routine_discovery_agent = RoutineDiscoveryAgent(
@@ -59,15 +66,15 @@ def main() -> None:
         llm_model=args.llm_model,
         output_dir=args.output_dir,
     )
-    print(f"Routine discovery agent initialized.")
+    logger.info(f"Routine discovery agent initialized.")
     
-    print(f"\n{'-' * 100}")
-    print(f"Running routine discovery agent.")
-    print(f"{'-' * 100}\n")
+    logger.info(f"\n{'-' * 100}")
+    logger.info(f"Running routine discovery agent.")
+    logger.info(f"{'-' * 100}\n")
     
     # run the routine discovery agent
     routine_discovery_agent.run()
-    print(f"Routine discovery agent run complete")
+    logger.info(f"Routine discovery agent run complete")
 
 
 if __name__ == "__main__":

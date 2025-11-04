@@ -211,4 +211,6 @@ __marimo__/
 
 # output directories
 cdp_captures/
+cdp_captures*/
 routine_discovery_output/
+routine_discovery_output*/

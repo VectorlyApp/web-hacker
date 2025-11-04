@@ -120,7 +120,7 @@ Placeholders inside operation fields are resolved at runtime:
 
 Interpolation occurs before an operation executes. For example, a fetch endpoint might be:
 
-```
+```json
 {
   "type": "fetch",
   "endpoint": {
@@ -137,16 +137,18 @@ Interpolation occurs before an operation executes. For example, a fetch endpoint
 
 This substitutes parameter values and injects `auth_token` from cookies. The JSON response is stored under `sessionStorage['result_key']` and can be returned by a final `return` operation using the matching `session_storage_key`.
 
-## Prerequisits
+## Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - Google Chrome (stable)
-- uv (Python package manager)
+- [uv (Python package manager)](https://github.com/astral-sh/uv)
   - macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
   - Windows (PowerShell): `iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex`
 - OpenAI API key
 
 ## Set up Your Environment 🔧
+
+### Linux
 
 ```bash
 # 1) Clone and enter the repo
@@ -154,7 +156,7 @@ git clone https://github.com/VectorlyApp/web-hacker.git
 cd web-hacker
 
 # 2) Create & activate virtual environment (uv)
-uv venv .venv
+uv venv --prompt web-hacker
 source .venv/bin/activate   # Windows: .venv\\Scripts\\activate
 
 # 3) Install in editable mode via uv (pip-compatible interface)
@@ -164,6 +166,29 @@ uv pip install -e .
 cp .env.example .env  # then edit values
 # or set directly
 export OPENAI_API_KEY="sk-..."
+```
+
+### Windows
+
+```powershell
+# 1) Clone and enter the repo
+git clone https://github.com/VectorlyApp/web-hacker.git
+cd web-hacker
+
+# 2) Install uv (if not already installed)
+iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex
+
+# 3) Create & activate virtual environment (uv)
+uv venv --prompt web-hacker
+.venv\Scripts\activate
+
+# 4) Install in editable mode via uv (pip-compatible interface)
+uv pip install -e .
+
+# 5) Configure environment
+copy .env.example .env  # then edit values
+# or set directly
+$env:OPENAI_API_KEY="sk-..."
 ```
 
 ## Launch Chrome in Debug Mode 🐞
@@ -242,15 +267,10 @@ Use the CDP browser monitor to block trackers and capture network, storage, and 
 **Run this command to start monitoring:**
 
 ```bash
-python scripts/browser_monitor.py \
-  --host 127.0.0.1 \
-  --port 9222 \
-  --output-dir ./cdp_captures \
-  --url about:blank \
-  --incognito
+python scripts/browser_monitor.py --host 127.0.0.1 --port 9222 --output-dir ./cdp_captures --url about:blank --incognito
 ```
 
-The script will open a new tab (starting at `about:blank`). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` when done; the script will consolidate transactions and produce a HAR automatically.
+The script will open a new tab (starting at `about:blank`). Navigate to your target website, then manually perform the actions you want to automate (e.g., search, login, export report). Keep Chrome focused during this process. Press `Ctrl+C` and the script will consolidate transactions and produce a HAR automatically.
 
 **Output structure** (under `--output-dir`, default `./cdp_captures`):
 
@@ -265,8 +285,8 @@ cdp_captures/
 │           ├── request.json
 │           ├── response.json
 │           └── response_body.[ext]
-├── storage/
-│   └── events.jsonl
+└── storage/
+    └── events.jsonl
 ```
 
 Tip: Keep Chrome focused while monitoring and perform the target flow (search, checkout, etc.). Press Ctrl+C to stop; the script will consolidate transactions and produce a HTTP Archive (HAR) automatically.
@@ -281,12 +301,19 @@ Use the **routine-discovery pipeline** to analyze captured data and synthesize a
 
 > ⚠️ **Important:** You must specify your own `--task` parameter. The example below is just for demonstration—replace it with a description of what you want to automate.
 
-```
+**Linux/macOS (bash):**
+```bash
 python scripts/discover_routines.py \
   --task "recover the api endpoints for searching for trains and their prices" \
   --cdp-captures-dir ./cdp_captures \
   --output-dir ./routine_discovery_output \
   --llm-model gpt-5
+```
+
+**Windows (PowerShell):**
+```powershell
+# Simple task (no quotes inside):
+python scripts/discover_routines.py --task "Recover the API endpoints for searching for trains and their prices" --cdp-captures-dir ./cdp_captures --output-dir ./routine_discovery_output --llm-model gpt-5
 ```
 
 **Example tasks:**
@@ -322,6 +349,7 @@ routine_discovery_output/
 ```json
 "field": "{{paramName}}"
 ```
+
 And `paramName` is a string parameter, manually change it to:
 ```json
 "field": "\"{{paramName}}\""
@@ -331,7 +359,7 @@ This ensures the parameter value is properly quoted as a JSON string when substi
 
 Run the example routine: 
 
-```
+```bash
 # Using a parameters file:
 
 python scripts/execute_routine.py \
@@ -347,7 +375,7 @@ python scripts/execute_routine.py \
 
 Run a discovered routine:
 
-```
+```bash
 python scripts/execute_routine.py \
   --routine-path routine_discovery_output/routine.json \
   --parameters-path routine_discovery_output/test_parameters.json
