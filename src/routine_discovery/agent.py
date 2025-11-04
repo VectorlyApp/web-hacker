@@ -589,11 +589,9 @@ class RoutineDiscoveryAgent(BaseModel):
             f"To feed output of a fetch into a subsequent fetch, you can save result to session storage and then use {{sessionStorage:key.to.path}}. "
         )
         self._add_to_message_history("user", message)
-        
+
         current_attempt = 0
-        
         while current_attempt < max_attempts:
-            
             current_attempt += 1
             
             # call to the LLM API for construction of the routine
@@ -634,8 +632,7 @@ class RoutineDiscoveryAgent(BaseModel):
                 f"Please try again to construct the routine."
             )
             self._add_to_message_history("user", message)
-            
-            
+
         raise Exception(f"Failed to construct the routine after {max_attempts} attempts")
 
     def productionize_routine(self, routine: Routine) -> ProductionRoutine:
