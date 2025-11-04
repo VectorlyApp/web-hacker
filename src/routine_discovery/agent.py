@@ -425,10 +425,9 @@ class RoutineDiscoveryAgent(BaseModel):
         """
         Resolve the variables from the extracted variables.
         """
-        
         # get the latest timestamp
         max_timestamp = self.context_manager.get_transaction_timestamp(extracted_variables.transaction_id)
-        
+
         # get a list of cookies and tokens that require resolution
         variables_to_resolve = [
             var for var in extracted_variables.variables if var.requires_resolution and
@@ -439,7 +438,7 @@ class RoutineDiscoveryAgent(BaseModel):
         ]
 
         resolved_variable_responses = []
-        
+
         # for each variable to resolve, try to find the source of the variable in the storage and transactions
         for variable in variables_to_resolve:
             logger.info(f"Resolving variable: {variable.name} with values to scan for: {variable.values_to_scan_for}")
@@ -448,12 +447,22 @@ class RoutineDiscoveryAgent(BaseModel):
             storage_objects = []
             for value in variable.values_to_scan_for:
                 storage_sources = self.context_manager.scan_storage_for_value(
-                    value=value
+                    value=value,
+                    max_timestamp=max_timestamp
                 )
                 storage_objects.extend(storage_sources)
 
             if len(storage_objects) > 0:
-                print(f"Found {len(storage_objects)} storage sources that contain the value")
+                logger.info(f"Found {len(storage_objects)} storage sources that contain the value")
+
+            # get the transaction ids that contain the value and are before the latest timestamp
+            transaction_ids = []
+            for value in variable.values_to_scan_for:
+                transaction_ids_found = self.context_manager.scan_transaction_responses(
+                    value=value,
+                    max_timestamp=max_timestamp
+                )
+                transaction_ids.extend(transaction_ids_found)
 
             # deduplicate transaction ids
             transaction_ids = list(set(transaction_ids))
@@ -472,7 +481,7 @@ class RoutineDiscoveryAgent(BaseModel):
             # construct the message to the LLM
             message = (
                 f"Please resolve the variable: {variable.observed_value}"
-                f"The variable was found in the following storage sources: {storage_sources}"
+                f"The variable was found in the following storage sources: {storage_objects}"
                 f"The variable was found in the following transactions ids: {transaction_ids}"
                 f"These transactions are added to the vectorstore in full (including response bodies)."
                 f"Please respond in the following format: {ResolvedVariableResponse.model_json_schema()}"
