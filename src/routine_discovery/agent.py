@@ -424,29 +424,22 @@ class RoutineDiscoveryAgent(BaseModel):
         
         # for each variable to resolve, try to find the source of the variable in the storage and transactions
         for variable in variables_to_resolve:
-            
             logger.info(f"Resolving variable: {variable.name} with values to scan for: {variable.values_to_scan_for}")
-            
+
             # get the storage objects that contain the value and are before the latest timestamp
+            storage_objects = []
             for value in variable.values_to_scan_for:
                 storage_sources = self.context_manager.scan_storage_for_value(
                     value=value
                 )
-                storage_sources.extend(storage_sources)
+                storage_objects.extend(storage_sources)
 
-            if len(storage_sources) > 0:
-                logger.info(f"Found {len(storage_sources)} storage sources that contain the value")
-            
-            # get the transaction ids that contain the value and are before the latest timestamp
-            transaction_ids = {}
-            for value in variable.values_to_scan_for:
-                transaction_ids.extend(self.context_manager.scan_transaction_responses(
-                    value=value, max_timestamp=max_timestamp
-                ))
-                
+            if len(storage_objects) > 0:
+                print(f"Found {len(storage_objects)} storage sources that contain the value")
+
             # deduplicate transaction ids
             transaction_ids = list(set(transaction_ids))
-                
+
             if len(transaction_ids) > 0:
                 logger.info(f"Found {len(transaction_ids)} transaction ids that contain the value: {transaction_ids}")
 
@@ -624,7 +617,7 @@ class RoutineDiscoveryAgent(BaseModel):
             f"and the surrounding quotes are removed, so \\\"{{{{item_id}}}}\\\" with value 42 becomes just 42 (valid JSON number, not string). "
             f"Example: \\\"{{{{total_price}}}}\\\" with value 29.99 → becomes 29.99 (quotes removed, valid JSON number). "
             f"Example: \\\"{{{{optional_data}}}}\\\" with null → becomes null (quotes removed, valid JSON null). "
-            """Placeholders will be resolved using this: param_pattern = r'(?:"|\\")\{\{([^}"]*)\}\}(?:"|\\")'"""
+            """Placeholders will be resolved using this: param_pattern = r'(?:"|\\\\")\\{\\{([^}"]*)\\}\\}(?:"|\\\\")'"""
             f"The resulting JSON MUST be valid and parseable after all placeholder replacements are done."
         )
         self._add_to_message_history("user", message)
