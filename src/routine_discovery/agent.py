@@ -81,37 +81,51 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("user", f"These are the possible network transaction ids you can choose from: {self.context_manager.get_all_transaction_ids()}")
 
         logger.info("Identifying the network transaction that directly corresponds to the user's requested task...")
-        logger.info(f"\n\nMessage history:\n{self.message_history}\n\n")##DEBUG
+        logger.debug(f"\n\nMessage history:\n{self.message_history}\n\n")
 
         identified_transaction = None
         while identified_transaction is None:
             # identify the transaction
             identified_transaction = self.identify_transaction()
-            logger.info(f"\nIdentified transaction:\n{identified_transaction.model_dump_json()}")##DEBUG
+            logger.debug(f"\nIdentified transaction:\n{identified_transaction.model_dump_json()}")
 
             if identified_transaction.transaction_id is None:
-                logger.error("Failed to identify the network transactions that directly correspond to the user's requested task.")
-                raise Exception("Failed to identify the network transactions that directly correspond to the user's requested task.")
+                # get vars
+                description = identified_transaction.description if identified_transaction.description is not None else 'No description provided'
+                explanation = identified_transaction.explanation if identified_transaction.explanation is not None else 'No explanation provided'
+                url = identified_transaction.url if identified_transaction.url is not None else 'No URL provided'
+                confidence_level = identified_transaction.confidence_level if identified_transaction.confidence_level is not None else 'No confidence level provided'
+
+                # construct the error message
+                error_message = (
+                    "Failed to identify the network transactions that directly correspond to the user's requested task."
+                    f"Description: {description}"
+                    f"Explanation: {explanation}"
+                    f"URL: {url}"
+                    f"Confidence level: {confidence_level}"
+                )
+                logger.error(error_message)
+                raise TransactionIdentificationFailedError(error_message)
 
             # confirm the identified transaction
             confirmation_response = self.confirm_identified_transaction(identified_transaction)
-            logger.info(f"\nConfirmation response:\n{confirmation_response.model_dump_json()}")##DEBUG
+            logger.debug(f"\nConfirmation response:\n{confirmation_response.model_dump_json()}")
 
             # if the identified transaction is not correct, try again
             if not confirmation_response.is_correct:
                 identified_transaction = None
                 self.current_transaction_identification_attempt += 1
-                logger.info(
+                logger.debug(
                     "Trying again to identify the network transaction that directly corresponds to the user's requested task... "
                     f"(attempt {self.current_transaction_identification_attempt})"
-                )##DEBUG
+                )
 
         if identified_transaction is None:
             logger.error("Failed to identify the network transactions that directly correspond to the user's requested task.")
             raise TransactionIdentificationFailedError(
                 "Failed to identify the network transactions that directly correspond to the user's requested task."
             )
-        logger.info(f"Identified transaction: {identified_transaction.transaction_id}")##DEBUG
+        logger.info(f"Identified transaction: {identified_transaction.transaction_id}")
 
         # save the indentified transactions
         save_path = os.path.join(self.output_dir, "root_transaction.json")
