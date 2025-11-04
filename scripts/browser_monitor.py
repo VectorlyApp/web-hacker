@@ -276,7 +276,7 @@ def save_session_summary(paths, summary, args, start_time, end_time, created_tab
         }
     }
     
-    with open(paths['summary_path'], 'w', encoding='utf-8') as f:
+    with open(paths['summary_path'], mode='w', encoding='utf-8') as f:
         json.dump(session_summary, f, indent=2, ensure_ascii=False)
     
     return session_summary
@@ -321,7 +321,7 @@ def main():
     logger.info(f"Output directory: {args.output_dir}")
     logger.info(f"Target URL: {navigate_to or 'No navigation (attach only)'}")
     logger.info(f"Tab ID: {tab_id}")
-    
+
     # Create and run CDP session
     try:
         session = CDPSession(
@@ -335,7 +335,7 @@ def main():
         )
         session.setup_cdp(navigate_to)
         session.run()
-        
+
     except KeyboardInterrupt:
         logger.info("\nSession stopped by user")
     except Exception as e:
@@ -349,14 +349,14 @@ def main():
                 dispose_context(remote_debugging_address, context_id)
             except Exception as e:
                 logger.info(f"Warning: Could not dispose browser context: {e}")
-        
+
         end_time = time.time()
-        
+
         # Get final summary and save it
         try:
             summary = session.get_monitoring_summary()
             save_session_summary(paths, summary, args, start_time, end_time, created_tab, context_id)
-            
+
             # Print organized summary
             logger.info("\n" + "="*60)
             logger.info("SESSION SUMMARY")
@@ -383,10 +383,10 @@ def main():
             logger.info(f"    └── events.jsonl")
             logger.info()
             logger.info(f"Session complete! Check {args.output_dir} for all outputs.")
-            
+
         except Exception as e:
-            logger.info(f"Warning: Could not generate summary: {e}")
+            logger.info("Warning: Could not generate summary: %s", e)
 
 
 if __name__ == "__main__":
-    main() 
+    main()

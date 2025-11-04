@@ -16,7 +16,7 @@ class Config():
     """
     Centralized configuration for environment variables.
     """
-    
+
     OPENAI_API_KEY: str | None = os.getenv("OPENAI_API_KEY")
 
     @classmethod
