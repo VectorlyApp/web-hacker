@@ -440,15 +440,18 @@ class RoutineDiscoveryAgent(BaseModel):
         Resolve the variables from the extracted variables.
         """
         # get the latest timestamp
-        max_timestamp = self.context_manager.get_transaction_timestamp(extracted_variables.transaction_id)
+        max_timestamp = self.context_manager.extract_timestamp_from_transaction_id(extracted_variables.transaction_id)
 
         # get a list of cookies and tokens that require resolution
         variables_to_resolve = [
-            var for var in extracted_variables.variables if var.requires_resolution and
-            var.type in [
-                VariableType.COOKIE,
-                VariableType.TOKEN
-            ]
+            var for var in extracted_variables.variables
+            if (
+                var.requires_resolution
+                and var.type in [
+                    VariableType.COOKIE,
+                    VariableType.TOKEN
+                ]
+            )
         ]
 
         resolved_variable_responses = []
@@ -635,13 +638,13 @@ class RoutineDiscoveryAgent(BaseModel):
             
         raise Exception(f"Failed to construct the routine after {max_attempts} attempts")
 
-    def productionize_routine(self, routine: Routine) -> Routine:
+    def productionize_routine(self, routine: Routine) -> ProductionRoutine:
         """
         Productionize the routine into a production routine.
         Args:
             routine (Routine): The routine to productionize.
         Returns:
-            Routine: The productionized routine.
+            ProductionRoutine: The productionized routine.
         """
         message = (
             f"Please productionize the routine (from previosu step): {routine.model_dump_json()}"
@@ -689,7 +692,7 @@ class RoutineDiscoveryAgent(BaseModel):
         
         return production_routine
 
-    def get_test_parameters(self, routine: Routine) -> TestParametersResponse:
+    def get_test_parameters(self, routine: ProductionRoutine) -> TestParametersResponse:
         """
         Get the test parameters for the routine.
         """
