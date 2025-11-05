@@ -159,10 +159,13 @@ cd web-hacker
 uv venv --prompt web-hacker
 source .venv/bin/activate   # Windows: .venv\\Scripts\\activate
 
-# 3) Install in editable mode via uv (pip-compatible interface)
+# 3) Install exactly what lockfile says
+uv sync
+
+# 4) Install in editable mode via uv (pip-compatible interface)
 uv pip install -e .
 
-# 4) Configure environment
+# 5) Configure environment
 cp .env.example .env  # then edit values
 # or set directly
 export OPENAI_API_KEY="sk-..."
