@@ -195,22 +195,12 @@ class Parameter(BaseModel):
 
         return v
 
-    @field_validator('type')
-    @classmethod
-    def validate_type_consistency(cls, v, info):
+    @model_validator(mode='after')
+    def validate_type_consistency(self) -> 'Parameter':
         """Validate type-specific constraints are consistent."""
-        if v == ParameterType.ENUM and not info.data.get('enum_values'):
+        if self.type == ParameterType.ENUM and not self.enum_values:
             raise ValueError("enum_values must be provided for enum type")
-        return v
-    # NOTE: The above validator has a bug - it checks info.data.get('enum_values') but enum_values
-    # hasn't been validated yet since 'type' is validated before 'enum_values'. 
-    # Fix would be to use @model_validator(mode='after') instead:
-    ##@model_validator(mode='after')
-    ##def validate_type_consistency(self) -> 'Parameter':
-    ##    """Validate type-specific constraints are consistent."""
-    ##    if self.type == ParameterType.ENUM and not self.enum_values:
-    ##        raise ValueError("enum_values must be provided for enum type")
-    ##    return self
+        return self
 
     @field_validator('default')
     @classmethod
