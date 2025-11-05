@@ -84,10 +84,10 @@ class TestResourceBase:
     
     def test_id_generation_format(self) -> None:
         """ID should be generated in format ClassName_uuid."""
-        # create a simple subclass for testing
+
         class TestResource(ResourceBase):
             pass
-        
+
         resource = TestResource()
         # check format: ClassName_uuid
         assert resource.id.startswith("TestResource_")
@@ -98,6 +98,7 @@ class TestResourceBase:
     
     def test_different_subclasses_different_ids(self) -> None:
         """Different subclasses should generate IDs with their own class names."""
+
         class ResourceA(ResourceBase):
             pass
         
@@ -112,6 +113,7 @@ class TestResourceBase:
     
     def test_created_at_timestamp(self) -> None:
         """created_at should be a valid unix timestamp."""
+
         class TestResource(ResourceBase):
             pass
         
@@ -124,6 +126,7 @@ class TestResourceBase:
     
     def test_updated_at_timestamp(self) -> None:
         """updated_at should be a valid unix timestamp."""
+
         class TestResource(ResourceBase):
             pass
         
@@ -136,6 +139,7 @@ class TestResourceBase:
     
     def test_resource_type_property(self) -> None:
         """resource_type property should return class name."""
+
         class MyCustomResource(ResourceBase):
             pass
         
@@ -144,8 +148,9 @@ class TestResourceBase:
     
     def test_custom_id_provided(self) -> None:
         """Should accept custom ID if provided."""
+
         class TestResource(ResourceBase):
-            pass
+                pass
         
         custom_id = "TestResource_custom-123"
         resource = TestResource(id=custom_id)
@@ -153,6 +158,7 @@ class TestResourceBase:
     
     def test_custom_timestamps_provided(self) -> None:
         """Should accept custom timestamps if provided."""
+
         class TestResource(ResourceBase):
             pass
         
@@ -164,12 +170,13 @@ class TestResourceBase:
     
     def test_serialization(self) -> None:
         """ResourceBase instances should be serializable."""
-        class TestResource(ResourceBase):
+
+        class _TestResource(ResourceBase):
             name: str
-        
-        resource = TestResource(name="test")
+
+        resource = _TestResource(name="test")
         data = resource.model_dump()
-        
+
         assert "id" in data
         assert "created_at" in data
         assert "updated_at" in data
@@ -178,7 +185,7 @@ class TestResourceBase:
 
 class TestParameter:
     """Tests for Parameter class."""
-    
+
     def test_valid_string_parameter(self, input_data_dir: Path) -> None:
         """Valid string parameter should be created successfully."""
         data = load_data(input_data_dir / "production_routine" / "parameter_valid_string.json")
@@ -194,7 +201,7 @@ class TestParameter:
         """Valid integer parameter should be created successfully."""
         data = load_data(input_data_dir / "production_routine" / "parameter_valid_integer.json")
         param = Parameter(**data)
-        
+
         assert param.name == "page_number"
         assert param.type == ParameterType.INTEGER
         assert param.required is False
@@ -206,12 +213,12 @@ class TestParameter:
         """Valid enum parameter should be created successfully."""
         data = load_data(input_data_dir / "production_routine" / "parameter_valid_enum.json")
         param = Parameter(**data)
-        
+
         assert param.name == "status"
         assert param.type == ParameterType.ENUM
         assert param.enum_values == ["active", "pending", "completed", "cancelled"]
         assert param.default == "active"
-    
+
     @pytest.mark.parametrize("invalid_name", [
         "123invalid",  # starts with number
         "invalid-name",  # contains hyphen
@@ -340,7 +347,6 @@ class TestParameter:
                 type=ParameterType.INTEGER,
                 examples=["1", "invalid", "3"]
             )
-        
         error_msg = str(exc_info.value)
         assert "cannot be converted to integer" in error_msg
     
