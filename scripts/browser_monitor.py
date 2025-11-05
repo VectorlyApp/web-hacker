@@ -382,7 +382,7 @@ def main():
             logger.info(f"│           └── response_body.[ext]")
             logger.info(f"└── storage/")
             logger.info(f"    └── events.jsonl")
-            logger.info()
+            logger.info("\n")
             logger.info(f"Session complete! Check {args.output_dir} for all outputs.")
 
         except Exception as e:
