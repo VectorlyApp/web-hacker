@@ -14,7 +14,12 @@ from pydantic import BaseModel, Field
 
 from src.config import Config
 from src.routine_discovery.context_manager import ContextManager
-from src.utils.llm_utils import llm_parse_text_to_model, collect_text_from_response, manual_llm_parse_text_to_model
+from src.utils.llm_utils import (
+    llm_parse_text_to_model,
+    collect_text_from_response,
+    manual_llm_parse_text_to_model,
+    llm_responses_create
+)
 from src.data_models.llm_responses import (
     TransactionIdentificationResponse,
     ExtractedVariableResponse,
@@ -251,9 +256,10 @@ class RoutineDiscoveryAgent(BaseModel):
         logger.debug(f"\n\nMessage history:\n{self.message_history}\n")
 
         # call to the LLM API
-        response = self.client.responses.create(
+        response = llm_responses_create(
+            client=self.client,
             model=self.llm_model,
-            input=self.message_history if self.current_transaction_identification_attempt == 0 else [self.message_history[-1]],
+            input=self.message_history if self.current_transaction_identification_attempt == 0 else self.message_history[-1:],
             previous_response_id=self.last_response_id,
             tools=self.tools,
             tool_choice="required",
@@ -322,12 +328,13 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("user", message)
         
         # call to the LLM API for confirmation that the identified transaction is correct
-        response = self.client.responses.create(
+        response = llm_responses_create(
+            client=self.client,
             model=self.llm_model,
-            input=[self.message_history[-1]],
+            input=self.message_history[-1:],
             previous_response_id=self.last_response_id,
             tools=tools,
-            tool_choice="required", # forces the LLM to look at the newly added files to the vectorstore
+            tool_choice="required",
         )
         
         # save the response id
@@ -405,9 +412,10 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("user", message)
 
         # call to the LLM API for extraction of the variables
-        response = self.client.responses.create(
+        response = llm_responses_create(
+            client=self.client,
             model=self.llm_model,
-            input=[self.message_history[-1]],
+            input=self.message_history[-1:],
             previous_response_id=self.last_response_id,
             tools=self.tools,
             tool_choice="required" if len(transactions) > 1 else "auto",
@@ -523,14 +531,15 @@ class RoutineDiscoveryAgent(BaseModel):
             ]
             
             # call to the LLM API for resolution of the variable
-            response = self.client.responses.create(
+            response = llm_responses_create(
+                client=self.client,
                 model=self.llm_model,
-                input=[self.message_history[-1]],
+                input=self.message_history[-1:],
                 previous_response_id=self.last_response_id,
                 tools=tools,
                 tool_choice="required",
             )
-            
+
             # save the response id
             self.last_response_id = response.id
             
@@ -595,12 +604,13 @@ class RoutineDiscoveryAgent(BaseModel):
             current_attempt += 1
             
             # call to the LLM API for construction of the routine
-            response = self.client.responses.create(
+            response = llm_responses_create(
+                client=self.client,
                 model=self.llm_model,
-                input=[self.message_history[-1]],
+                input=self.message_history[-1:],
                 previous_response_id=self.last_response_id,
                 tools=self.tools,
-                tool_choice="required",
+                tool_choice="required" if len(routine_transactions) > 1 else "auto",
             )
             
             # save the response id
@@ -663,9 +673,9 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("user", message)
 
         # call to the LLM API for productionization of the routine
-        response = self.client.responses.create(
+        response = llm_responses_create(
             model=self.llm_model,
-            input=[self.message_history[-1]],
+            input=self.message_history[-1:],
             previous_response_id=self.last_response_id,
         )
         
@@ -700,9 +710,10 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("user", message)
         
         # call to the LLM API for getting the test parameters
-        response = self.client.responses.create(
+        response = llm_responses_create(
+            client=self.client,
             model=self.llm_model,
-            input=[self.message_history[-1]],
+            input=self.message_history[-1:],
             previous_response_id=self.last_response_id,
         )
         

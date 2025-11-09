@@ -71,7 +71,10 @@ BLOCK_REGEXES = [
 ]
 
 # Default values - can be overridden by command line args
-DEFAULT_CAPTURE_RESOURCE_TYPES = {ResourceType.XHR, ResourceType.FETCH}
+DEFAULT_CAPTURE_RESOURCE_TYPES = {
+    ResourceType.XHR,
+    ResourceType.FETCH,
+}
 
 
 def parse_arguments():
@@ -194,6 +197,7 @@ If no TAB_ID is provided, a new tab will be created automatically.
     
     # Convert resource lists to sets
     args.capture_resources = set(args.capture_resources)
+
     
     # Set clearing defaults (enabled by default)
     args.clear_cookies = True

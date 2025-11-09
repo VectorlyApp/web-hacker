@@ -7,10 +7,13 @@ Utility functions for LLM API calls.
 import json
 import logging
 from typing import Type
+from time import sleep
 
 from openai import OpenAI
+from openai import APIError, APIConnectionError, RateLimitError
 from openai.types.responses import Response
 from pydantic import BaseModel
+
 
 from src.config import Config
 from src.utils.exceptions import LLMStructuredOutputError
@@ -151,3 +154,45 @@ def collect_text_from_response(resp: Response) -> str:
         if getattr(item, "type", None) == "output_text":
             chunks.append(getattr(item, "text", ""))
     return "\n".join(chunks).strip()
+
+
+def llm_responses_create(
+    client: OpenAI,
+    model: str,
+    input: list[dict],
+    previous_response_id: str | None = None,
+    tools: list[dict] = None,
+    tool_choice: str = "auto",
+    n_tries: int = 3
+) -> Response:
+    
+    for current_try in range(n_tries):
+        
+        error = None
+    
+        try:
+            response = client.responses.create(
+                model=model,
+                input=input,
+                previous_response_id=previous_response_id,
+                tools=tools,
+                tool_choice=tool_choice,
+            )
+            return response
+        
+        except APIError as e:
+            #Handle API error here, e.g. retry or log
+            logger.error(f"OpenAI API returned an API Error: {e}")
+            error = e
+        except APIConnectionError as e:
+            #Handle connection error here
+            logger.error(f"Failed to connect to OpenAI API: {e}")
+            error = e
+        except RateLimitError as e:
+            #Handle rate limit error (we recommend using exponential backoff)
+            logger.error(f"OpenAI API request exceeded rate limit: {e}")
+            error = e
+        
+        sleep(1)
+        
+    raise error
