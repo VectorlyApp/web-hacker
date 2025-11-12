@@ -77,8 +77,6 @@ DEFAULT_CAPTURE_RESOURCE_TYPES = {
     ResourceType.DOCUMENT,
     ResourceType.SCRIPT,
     ResourceType.IMAGE,
-    ResourceType.STYLESHEET,
-    ResourceType.FONT,
     ResourceType.MEDIA
 }
 
@@ -232,9 +230,11 @@ def setup_output_directory(output_dir, keep_output):
     # Create organized subdirectories
     network_dir = os.path.join(output_dir, "network")
     storage_dir = os.path.join(output_dir, "storage")
+    interaction_dir = os.path.join(output_dir, "interaction")
     
     os.makedirs(network_dir, exist_ok=True)
     os.makedirs(storage_dir, exist_ok=True)
+    os.makedirs(interaction_dir, exist_ok=True)
     
     # Create transactions directory for unified request/response storage
     transactions_dir = os.path.join(network_dir, "transactions")
@@ -244,11 +244,13 @@ def setup_output_directory(output_dir, keep_output):
         # Main directories
         'network_dir': network_dir,
         'storage_dir': storage_dir,
+        'interaction_dir': interaction_dir,
         'transactions_dir': transactions_dir,
         
         
         # Storage files  
         'storage_jsonl_path': os.path.join(storage_dir, "events.jsonl"),
+        'interaction_jsonl_path': os.path.join(interaction_dir, "events.jsonl"),
         
         # Summary file
         'summary_path': os.path.join(output_dir, "session_summary.json")
@@ -282,6 +284,9 @@ def save_session_summary(paths, summary, args, start_time, end_time, created_tab
             },
             "storage": {
                 "events": paths['storage_jsonl_path']
+            },
+            "interaction": {
+                "events": paths['interaction_jsonl_path']
             }
         }
     }
@@ -379,6 +384,7 @@ def main():
             logger.info(f"Cookies tracked: {summary['storage']['cookies_count']}")
             logger.info(f"LocalStorage origins: {len(summary['storage']['local_storage_origins'])}")
             logger.info(f"SessionStorage origins: {len(summary['storage']['session_storage_origins'])}")
+            logger.info(f"Interactions logged: {summary['interaction']['interactions_logged']}")
             logger.info("OUTPUT STRUCTURE:")
             logger.info(f"├── session_summary.json")
             logger.info(f"├── network/")
@@ -389,8 +395,11 @@ def main():
             logger.info(f"│           ├── request.json")
             logger.info(f"│           ├── response.json")
             logger.info(f"│           └── response_body.[ext]")
-            logger.info(f"└── storage/")
+            logger.info(f"├── storage/")
+            logger.info(f"│   └── events.jsonl")
+            logger.info(f"└── interaction/")
             logger.info(f"    └── events.jsonl")
+
             logger.info("\n")
             logger.info(f"Session complete! Check {args.output_dir} for all outputs.")
 
