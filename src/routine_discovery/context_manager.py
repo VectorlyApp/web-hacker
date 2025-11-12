@@ -142,7 +142,7 @@ class ContextManager(BaseModel):
                 with open(response_body_path, mode="r", encoding='utf-8', errors='replace') as f:
                     result["response_body"] = f.read()
                     
-                    # sanitize the response body if it's an html file
+                    # sanitize the response body if it's an html file and clean_response_body is True
                     if response_body_extension == ".html" and clean_response_body:
                         result["response_body"] = get_text_from_html(result["response_body"])
         return result
