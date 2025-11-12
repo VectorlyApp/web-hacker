@@ -86,10 +86,12 @@ class RoutineDiscoveryAgent(BaseModel):
 
         identified_transaction = None
         while identified_transaction is None:
+            
             # identify the transaction
             identified_transaction = self.identify_transaction()
             logger.debug(f"\nIdentified transaction:\n{identified_transaction.model_dump_json()}")
 
+            # ensure the identified transaction not None
             if identified_transaction.transaction_id is None:
                 # get vars
                 description = identified_transaction.description if identified_transaction.description is not None else 'No description provided'
@@ -106,9 +108,23 @@ class RoutineDiscoveryAgent(BaseModel):
                     f"- Confidence level: {confidence_level}\n"
                 )
                 logger.error(error_message)
-                raise TransactionIdentificationFailedError(error_message)
+                
+                if self.current_transaction_identification_attempt == self.n_transaction_identification_attempts:
+                    raise TransactionIdentificationFailedError(error_message)
+                else:
+                    self.current_transaction_identification_attempt += 1
+                    continue
+                
+            # ensure the identified transaction is in the context manager (not hallucinated)
+            if identified_transaction.transaction_id not in self.context_manager.get_all_transaction_ids():
+                logger.error(f"Identified transaction: {identified_transaction.transaction_id} is not in the context manager.")
+                if self.current_transaction_identification_attempt == self.n_transaction_identification_attempts:
+                    raise TransactionIdentificationFailedError("Identified transaction is not in the context manager.")
+                else:
+                    self.current_transaction_identification_attempt += 1
+                    continue
 
-            # confirm the identified transaction
+            # confirm the identified transaction is correct and directly corresponds to the user's requested task
             confirmation_response = self.confirm_identified_transaction(identified_transaction)
             logger.debug(f"\nConfirmation response:\n{confirmation_response.model_dump_json()}")
 
@@ -244,6 +260,8 @@ class RoutineDiscoveryAgent(BaseModel):
         else:
             message = (
                 f"Please try again to identify the network transactions that directly correspond to the user's requested task."
+                f"The transaction id you provided does not exist or the request was not considered relevant to the user's requested task."
+                f"These are the possible network transaction ids you can choose from: {self.context_manager.get_all_transaction_ids()}"
                 f"Respond in the following format: {TransactionIdentificationResponse.model_json_schema()}"
             )
             self._add_to_message_history("user", message)
