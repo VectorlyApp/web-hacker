@@ -454,9 +454,26 @@ class RoutineDiscoveryAgent(BaseModel):
 
         return parsed_response
     
-    def resolve_variables(self, extracted_variables: ExtractedVariableResponse) -> list[ResolvedVariableResponse]:
+    def resolve_variables(
+        self, 
+        extracted_variables: ExtractedVariableResponse,
+        max_storage_objects_to_show: int = 100
+    ) -> list[ResolvedVariableResponse]:
         """
-        Resolve the variables from the extracted variables.
+        Find the source/origin of variables that were extracted from network transactions.
+        
+        For each variable that requires resolution (cookies, tokens), this method:
+        - Searches browser storage (cookies, localStorage, sessionStorage) for where the value came from
+        - Searches previous network transactions for where the value came from
+        - Returns resolved variables with their source paths (e.g., sessionStorage keys or transaction response paths)
+        
+        Args:
+            extracted_variables: Variables extracted from a network transaction (contains observed values but not their sources)
+            max_storage_objects_to_show: Maximum number of storage objects to include in the summary (default: 100). 
+                Limits message size sent to LLM to prevent context overflow.
+        
+        Returns:
+            List of resolved variables, each containing information about where the variable's value comes from
         """
         # get the latest timestamp
         max_timestamp = self.context_manager.extract_timestamp_from_transaction_id(extracted_variables.transaction_id)
@@ -480,15 +497,40 @@ class RoutineDiscoveryAgent(BaseModel):
             logger.info(f"Resolving variable: {variable.name} with values to scan for: {variable.values_to_scan_for}")
 
             # get the storage objects that contain the value and are before the latest timestamp
-            storage_objects = []
+            storage_objects_raw = []
             for value in variable.values_to_scan_for:
                 storage_sources = self.context_manager.scan_storage_for_value(
                     value=value,
                 )
-                storage_objects.extend(storage_sources)
+                storage_objects_raw.extend(storage_sources)
 
-            if len(storage_objects) > 0:
-                logger.info(f"Found {len(storage_objects)} storage sources that contain the value")
+            # Parse storage objects and extract only metadata to avoid huge messages
+            storage_objects_summary = []
+            for storage_line in storage_objects_raw[:max_storage_objects_to_show]:
+                if not storage_line or not storage_line.strip():
+                    continue  # Skip empty lines
+                try:
+                    obj = json.loads(storage_line)
+                    # Extract only key metadata instead of full content
+                    summary = {
+                        "type": obj.get("type", "unknown"),
+                        "origin": obj.get("origin", ""),
+                        "key": obj.get("key", ""),
+                        "timestamp": obj.get("timestamp", ""),
+                    }
+                    storage_objects_summary.append(summary)
+                except json.JSONDecodeError as e:
+                    # If parsing fails, log and include a minimal summary
+                    logger.warning(f"Failed to parse storage object: {e}. Raw preview: {storage_line[:100]}")
+                    storage_objects_summary.append({
+                        "error": "parse_failed",
+                        "raw_preview": storage_line[:100] + "..." if len(storage_line) > 100 else storage_line
+                    })
+
+            if len(storage_objects_raw) > 0:
+                logger.info(f"Found {len(storage_objects_raw)} storage sources that contain the value")
+                if len(storage_objects_raw) > max_storage_objects_to_show:
+                    logger.info(f"Limiting storage sources summary to {max_storage_objects_to_show} entries to prevent message size issues")
 
             # get the transaction ids that contain the value and are before the latest timestamp
             transaction_ids = []
@@ -514,15 +556,17 @@ class RoutineDiscoveryAgent(BaseModel):
                 )
 
             # construct the message to the LLM
+            # Use summary instead of full storage objects to prevent message size issues
             message = (
-                f"Please resolve the variable: {variable.observed_value}"
-                f"The variable was found in the following storage sources: {storage_objects}"
-                f"The variable was found in the following transactions ids: {transaction_ids}"
-                f"These transactions are added to the vectorstore in full (including response bodies)."
-                f"Please respond in the following format: {ResolvedVariableResponse.model_json_schema()}"
-                f"Dot paths should be like this: 'key.data.items[0].id', 'path.to.valiable.0.value', etc."
-                f"For paths in transaction responses, start with the first key of the response body"
-                f"For paths in storage, start with the cookie, local storage, or session storage entry name"
+                f"Please resolve the variable: {variable.observed_value}\n"
+                f"The variable was found in {len(storage_objects_raw)} storage source(s). "
+                f"Summary of first {len(storage_objects_summary)} storage sources: {storage_objects_summary}\n"
+                f"The variable was found in the following transactions ids: {transaction_ids}\n"
+                f"These transactions are added to the vectorstore in full (including response bodies).\n"
+                f"Please respond in the following format: {ResolvedVariableResponse.model_json_schema()}\n"
+                f"Dot paths should be like this: 'key.data.items[0].id', 'path.to.valiable.0.value', etc.\n"
+                f"For paths in transaction responses, start with the first key of the response body\n"
+                f"For paths in storage, start with the cookie, local storage, or session storage entry name\n"
                 f"If the variable is found in both storage and transactions, you should indicate both sources and resolve them accordinly!"
             )
             self._add_to_message_history("user", message)
