@@ -6,6 +6,7 @@ CDP Session management for web scraping with Chrome DevTools Protocol.
 
 import json
 import logging
+import os
 import websocket
 import threading
 import time
@@ -13,6 +14,7 @@ import time
 from src.config import Config
 from src.cdp.network_monitor import NetworkMonitor
 from src.cdp.storage_monitor import StorageMonitor
+from src.cdp.interaction_monitor import InteractionMonitor
 
 logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
 logger = logging.getLogger(__name__)
@@ -53,6 +55,11 @@ class CDPSession:
         )
         
         self.storage_monitor = StorageMonitor(
+            output_dir=output_dir,
+            paths=paths
+        )
+        
+        self.interaction_monitor = InteractionMonitor(
             output_dir=output_dir,
             paths=paths
         )
@@ -133,6 +140,7 @@ class CDPSession:
         # Setup monitoring components
         self.network_monitor.setup_network_monitoring(self)
         self.storage_monitor.setup_storage_monitoring(self)
+        self.interaction_monitor.setup_interaction_monitoring(self)
         
         # Optional navigate
         if navigate_to:
@@ -146,6 +154,10 @@ class CDPSession:
         
         # Try storage monitor
         if self.storage_monitor.handle_storage_message(msg, self):
+            return
+        
+        # Try interaction monitor
+        if self.interaction_monitor.handle_interaction_message(msg, self):
             return
         
         # Handle command replies
@@ -184,6 +196,10 @@ class CDPSession:
         if self.storage_monitor.handle_storage_command_reply(msg, self):
             return True
         
+        # Try interaction monitor
+        if self.interaction_monitor.handle_interaction_command_reply(msg, self):
+            return True
+        
         return False
     
     def run(self):
@@ -206,6 +222,11 @@ class CDPSession:
             # Generate HAR file from consolidated transactions
             har_path = f"{self.output_dir}/network.har"
             self.network_monitor.generate_har_from_transactions(har_path, "Web Hacker Session")
+            
+            # Consolidate all interactions into a single JSON file
+            interaction_dir = self.paths.get('interaction_dir', f"{self.output_dir}/interaction")
+            consolidated_interactions_path = os.path.join(interaction_dir, "consolidated_interactions.json")
+            self.interaction_monitor.consolidate_interactions(consolidated_interactions_path)
         finally:
             try:
                 self.ws.close()
@@ -222,8 +243,10 @@ class CDPSession:
             
         storage_summary = self.storage_monitor.get_storage_summary()
         network_summary = self.network_monitor.get_network_summary()
+        interaction_summary = self.interaction_monitor.get_interaction_summary()
         
         return {
             "network": network_summary,
             "storage": storage_summary,
+            "interaction": interaction_summary,
         }
