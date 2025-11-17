@@ -157,7 +157,14 @@ This substitutes parameter values and injects `auth_token` from cookies. The JSO
 
 ### From PyPI (Recommended)
 
+**Note:** We recommend using a virtual environment to avoid dependency conflicts.
+
 ```bash
+# Create and activate a virtual environment
+python3.12 -m venv web-hacker-env
+source web-hacker-env/bin/activate  # On Windows: web-hacker-env\Scripts\activate
+
+# Install web-hacker
 pip install web-hacker
 ```
 
