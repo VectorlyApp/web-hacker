@@ -241,6 +241,29 @@ web-hacker-discover --task "Search for flights" --cdp-captures-dir ./captures
 web-hacker-execute --routine-path routine.json --parameters-path params.json
 ```
 
+## Quickstart (Easiest Way) 🚀
+
+The fastest way to get started is using the quickstart script, which automates the entire workflow:
+
+```bash
+# Make sure web-hacker is installed
+pip install web-hacker
+
+# Set your OpenAI API key
+export OPENAI_API_KEY="sk-..."
+
+# Run the quickstart script
+./scripts/quickstart.sh
+```
+
+The quickstart script will:
+0. ✅ Automatically launch Chrome in debug mode
+1. 📊 Start browser monitoring (you perform actions)
+2. 🤖 Discover routines from captured data
+3. 📝 Show you how to execute the discovered routine
+
+**Note:** The quickstart script is included in the repository. If you installed from PyPI, you can download it from the [GitHub repository](https://github.com/VectorlyApp/web-hacker/blob/main/scripts/quickstart.sh).
+
 ## Set up Your Environment 🔧
 
 ### Linux
@@ -290,6 +313,8 @@ $env:OPENAI_API_KEY="sk-..."
 ```
 
 ## Launch Chrome in Debug Mode 🐞
+
+> 💡 **Tip:** The [quickstart script](#quickstart-easiest-way-🚀) automatically launches Chrome for you. You only need to follow these manual instructions if you're not using the quickstart script.
 
 ### Instructions for MacOS
 
@@ -352,6 +377,12 @@ The reverse engineering process follows a simple three-step workflow:
 1. **Monitor** — Capture network traffic, storage events, and interactions while you manually perform the target task in Chrome
 2. **Discover** — Let the AI agent analyze the captured data and generate a reusable Routine
 3. **Execute** — Run the discovered Routine with different parameters to automate the task
+
+### Quick Start (Recommended)
+
+**Easiest way:** Use the quickstart script (see [Quickstart](#quickstart-easiest-way-🚀) above) which automates everything.
+
+### Manual Workflow
 
 Each step is detailed below. Start by ensuring Chrome is running in debug mode (see [Launch Chrome in Debug Mode](#launch-chrome-in-debug-mode-🐞) above).
 
