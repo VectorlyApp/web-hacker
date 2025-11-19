@@ -255,13 +255,6 @@ def launch_chrome(port: int) -> Optional[subprocess.Popen]:
                 print_colored("✅ Chrome is ready!", GREEN)
                 # Give Chrome a moment to fully initialize tabs
                 time.sleep(0.5)
-                # Open documentation page explaining what's happening
-                doc_url = "https://github.com/VectorlyApp/web-hacker/blob/main/scripts/chrome-debug-mode-explanation.md"
-                print("📖 Opening documentation page...")
-                if open_url_in_chrome(port, doc_url):
-                    print_colored("✅ Documentation page opened", GREEN)
-                else:
-                    print_colored("⚠️  Could not open documentation page automatically. You can manually navigate to it.", YELLOW)
                 return process
             time.sleep(1)
         
@@ -322,13 +315,6 @@ def main():
     chrome_process = None
     if check_chrome_running(PORT):
         print_colored(f"✅ Chrome is already running in debug mode on port {PORT}", GREEN)
-        # Still open the documentation page if Chrome was already running
-        doc_url = "https://github.com/VectorlyApp/web-hacker/blob/main/scripts/chrome-debug-mode-explanation.md"
-        print("📖 Opening documentation page...")
-        if open_url_in_chrome(PORT, doc_url):
-            print_colored("✅ Documentation page opened", GREEN)
-        else:
-            print_colored("⚠️  Could not open documentation page automatically. You can manually navigate to it.", YELLOW)
     else:
         chrome_process = launch_chrome(PORT)
     
@@ -336,38 +322,19 @@ def main():
     
     # Step 2: Monitor
     print_colored("Step 2: Starting browser monitoring...", GREEN)
+    print("🚀 Starting monitor (press Ctrl+C when done)...")
     
-    skip = input("   Skip monitoring step? (y/n): ").strip().lower()
-    if skip == 'y':
-        new_dir = input(f"   Enter CDP captures directory path [Press Enter to use: {CDP_CAPTURES_DIR.resolve()}]: ").strip()
-        if new_dir:
-            cdp_captures_dir = Path(new_dir)
-            print_colored(f"✅ Using CDP captures directory: {cdp_captures_dir}", GREEN)
-        print_colored("⏭️  Skipping monitoring step.", GREEN)
-        print()
-    else:
-        print_colored("📋 Instructions:", YELLOW)
-        print("   1. A new Chrome tab will open")
-        print("   2. Navigate to your target website")
-        print("   3. Perform the actions you want to automate (search, login, etc.)")
-        print("   4. Press Ctrl+C when you're done")
-        print()
-        input("Press Enter to open a new tab and start monitoring...")
-        
-        print()
-        print("🚀 Starting monitor (press Ctrl+C when done)...")
-        
-        monitor_cmd = [
-            "web-hacker-monitor",
-            "--host", "127.0.0.1",
-            "--port", str(PORT),
-            "--output-dir", str(cdp_captures_dir),
-            "--url", "about:blank",
-            "--incognito",
-        ]
-        
-        run_command(monitor_cmd, "monitoring")
-        print()
+    monitor_cmd = [
+        "web-hacker-monitor",
+        "--host", "127.0.0.1",
+        "--port", str(PORT),
+        "--output-dir", str(cdp_captures_dir),
+        "--url", "about:blank",
+        "--incognito",
+    ]
+    
+    run_command(monitor_cmd, "monitoring")
+    print()
     
     # Step 3: Discover
     transactions_dir = cdp_captures_dir / "network" / "transactions"
