@@ -211,7 +211,7 @@ class CDPSession:
                 msg = json.loads(self.ws.recv())
                 self.handle_message(msg)
         except KeyboardInterrupt:
-            logger.info("\nStopped.")
+            logger.info("\nStopped. Saving assets...")
             # Final cookie sync using native CDP (no delay needed)
             self.storage_monitor.monitor_cookie_changes(self)
             
