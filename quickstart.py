@@ -371,6 +371,17 @@ def main():
     print_colored("╚════════════════════════════════════════════════════════════╝", BLUE)
     print()
     
+    # Pipeline overview
+    print_colored("Web-hacker Pipeline:", BLUE)
+    print()
+    print("  Step 1: Launch Chrome in debug mode")
+    print("  Step 2: Monitor browser interactions")
+    print("  Step 3: Discover web action routine")
+    print("  Step 4 (optional): Test routine execution")
+    print()
+    input("Press Enter to start: ")
+    print()
+    
     # Step 1: Launch Chrome
     print_colored("Step 1: Launching Chrome in debug mode...", GREEN)
     
