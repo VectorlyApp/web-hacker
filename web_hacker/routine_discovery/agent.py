@@ -251,10 +251,10 @@ class RoutineDiscoveryAgent(BaseModel):
                     "role": "user",
                     "content": f"These are the possible network transaction ids you can choose from: {self.context_manager.get_all_transaction_ids()}"
                 },
-                {
-                    "role": "user",
-                    "content": f"Please respond in the following format: {TransactionIdentificationResponse.model_json_schema()}"
-                }
+                # {
+                #     "role": "user",
+                #     "content": f"Please respond in the following format: {TransactionIdentificationResponse.model_json_schema()}"
+                # }
             ]
         else:
             message = (
@@ -268,39 +268,26 @@ class RoutineDiscoveryAgent(BaseModel):
         logger.debug(f"\n\nMessage history:\n{self.message_history}\n")
 
         # call to the LLM API
-        response = self.client.responses.create(
+        response = self.client.responses.parse(
             model=self.llm_model,
             input=self.message_history if self.current_transaction_identification_attempt == 0 else [self.message_history[-1]],
             previous_response_id=self.last_response_id,
             tools=self.tools,
             tool_choice="required",
+            text_format=TransactionIdentificationResponse
         )
+        transaction_identification_response = response.output_parsed
+        logger.info(f"\nTransaction identification response:\n{transaction_identification_response.model_dump()}")
 
-        # save the response id
+        # save the response id and add to the message history
         self.last_response_id = response.id
+        self._add_to_message_history("assistant", transaction_identification_response.model_dump_json())
 
-        # collect the text from the response
-        response_text = collect_text_from_response(response)
-        self._add_to_message_history("assistant", response_text)
-        
-        logger.debug(f"\nResponse text:\n{response_text}\n\n")
-
-        # TODO FIXME BUG
-        # parse the response to the pydantic model
-        parsed_response = llm_parse_text_to_model(
-            text=response_text,
-            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
-            pydantic_model=TransactionIdentificationResponse,
-            client=self.client,
-            llm_model='gpt-5-nano'
-        )
-        self._add_to_message_history("assistant", parsed_response.model_dump_json())
-        
-        logger.debug(f"\nParsed response:\n{parsed_response.model_dump_json()}")
+        logger.debug(f"\nParsed response:\n{transaction_identification_response.model_dump_json()}")
         logger.debug(f"New chat history:\n{self.message_history}\n")
 
         # return the parsed response
-        return parsed_response
+        return transaction_identification_response
 
     def confirm_identified_transaction(
         self,
@@ -334,36 +321,25 @@ class RoutineDiscoveryAgent(BaseModel):
             f"{identified_transaction.transaction_id} have been added to the vectorstore in full (including response bodies)."
             "Please confirm that the identified transaction is correct and that it directly corresponds to the user's requested task:"
             f"{self.task}"
-            f"Please respond in the following format:\n{TransactionConfirmationResponse.model_json_schema()}"
         )
         self._add_to_message_history("user", message)
         
         # call to the LLM API for confirmation that the identified transaction is correct
-        response = self.client.responses.create(
+        response = self.client.responses.parse(
             model=self.llm_model,
             input=[self.message_history[-1]],
             previous_response_id=self.last_response_id,
             tools=tools,
             tool_choice="required", # forces the LLM to look at the newly added files to the vectorstore
+            text_format=TransactionConfirmationResponse
         )
+        transaction_confirmation_response = response.output_parsed
         
-        # save the response id
+        # save the response id and add to the message history
         self.last_response_id = response.id
+        self._add_to_message_history("assistant", transaction_confirmation_response.model_dump_json())
         
-        # collect the text from the response
-        response_text = collect_text_from_response(response)
-        self._add_to_message_history("assistant", response_text)
-        
-        # parse the response to the pydantic model
-        parsed_response = llm_parse_text_to_model(
-            text=response_text,
-            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
-            pydantic_model=TransactionConfirmationResponse,
-            client=self.client,
-            llm_model='gpt-5-nano'
-        )
-        
-        return parsed_response
+        return transaction_confirmation_response
 
     def extract_variables(self, transaction_id: str) -> ExtractedVariableResponse:
         """
@@ -397,18 +373,11 @@ class RoutineDiscoveryAgent(BaseModel):
                 else:
                     response_body = response_body_str
             
-            transactions.append(
-                {
-                    "request": transaction["request"],
-                    # "response": transaction["response"],
-                    # "response_body": response_body
-                }
-            )
+            transactions.append({"request": transaction["request"]})
         
         # add message to the message history
         message = (
             f"Please extract the variables from only these network requests (requests only!): {transactions}"
-            f"Please respond in the following format: {ExtractedVariableResponse.model_json_schema()}"
             "Mark each variable with requires_resolution=True if we need to dynamically resolve this variable at runtime."
             "If we can most likely hardcode this value, mark requires_resolution=False."
             "system variables are related to the device or browser environment, and are not used to identify the user."
@@ -422,36 +391,24 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("user", message)
 
         # call to the LLM API for extraction of the variables
-        response = self.client.responses.create(
+        response = self.client.responses.parse(
             model=self.llm_model,
             input=[self.message_history[-1]],
             previous_response_id=self.last_response_id,
             tools=self.tools,
             tool_choice="required" if len(transactions) > 1 else "auto",
+            text_format=ExtractedVariableResponse
         )
+        extracted_variable_response = response.output_parsed
 
-        # save the response id
+        # save the response id and add to the message history
         self.last_response_id = response.id
-
-        # collect the text from the response
-        response_text = collect_text_from_response(response)
-        self.message_history.append({"role": "assistant","content": response_text})
-
-        # TODO FIXME BUG
-        # parse the response to the pydantic model
-        parsed_response = llm_parse_text_to_model(
-            text=response_text,
-            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
-            pydantic_model=ExtractedVariableResponse,
-            client=self.client,
-            llm_model="gpt-5-nano"
-        )
-        self._add_to_message_history("assistant", parsed_response.model_dump_json())
+        self._add_to_message_history("assistant", extracted_variable_response.model_dump_json())
 
         # override the transaction_id with the one passed in, since the LLM may return an incorrect format
-        parsed_response.transaction_id = original_transaction_id
+        extracted_variable_response.transaction_id = original_transaction_id
 
-        return parsed_response
+        return extracted_variable_response
     
     def resolve_variables(self, extracted_variables: ExtractedVariableResponse) -> list[ResolvedVariableResponse]:
         """
@@ -518,7 +475,6 @@ class RoutineDiscoveryAgent(BaseModel):
                 f"The variable was found in the following storage sources: {storage_objects}"
                 f"The variable was found in the following transactions ids: {transaction_ids}"
                 f"These transactions are added to the vectorstore in full (including response bodies)."
-                f"Please respond in the following format: {ResolvedVariableResponse.model_json_schema()}"
                 f"Dot paths should be like this: 'key.data.items[0].id', 'path.to.valiable.0.value', etc."
                 f"For paths in transaction responses, start with the first key of the response body"
                 f"For paths in storage, start with the cookie, local storage, or session storage entry name"
@@ -540,38 +496,28 @@ class RoutineDiscoveryAgent(BaseModel):
             ]
             
             # call to the LLM API for resolution of the variable
-            response = self.client.responses.create(
+            response = self.client.responses.parse(
                 model=self.llm_model,
                 input=[self.message_history[-1]],
                 previous_response_id=self.last_response_id,
                 tools=tools,
                 tool_choice="required",
+                text_format=ResolvedVariableResponse
             )
-            
+            resolved_variable_response = response.output_parsed
+
             # save the response id
             self.last_response_id = response.id
-            
-            # collect the text from the response
-            response_text = collect_text_from_response(response)
-            self._add_to_message_history("assistant", response_text)
+            self._add_to_message_history("assistant", resolved_variable_response.model_dump_json())
             
             # parse the response to the pydantic model
-            parsed_response = llm_parse_text_to_model(
-                text=response_text,
-                context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
-                pydantic_model=ResolvedVariableResponse,
-                client=self.client,
-                llm_model="gpt-5-nano"
-            )
-            self._add_to_message_history("assistant", parsed_response.model_dump_json())
+            resolved_variable_responses.append(resolved_variable_response)
             
-            resolved_variable_responses.append(parsed_response)
-            
-            if not parsed_response.session_storage_source and not parsed_response.transaction_source:
-                logger.info(f"[WARNING] Not able to resolve variable: {parsed_response.variable.name}. Harcoding to observed value: {parsed_response.variable.observed_value}")
+            if not resolved_variable_response.session_storage_source and not resolved_variable_response.transaction_source:
+                logger.info(f"[WARNING] Not able to resolve variable: {resolved_variable_response.variable.name}. Harcoding to observed value: {resolved_variable_response.variable.observed_value}")
                 
-            if parsed_response.session_storage_source and parsed_response.transaction_source:
-                logger.info(f"[INFO] Variable: {parsed_response.variable.name} is resolved from both session storage and transaction. It is reasonable to use either source (fetch is slower but more stable)")
+            if resolved_variable_response.session_storage_source and resolved_variable_response.transaction_source:
+                logger.info(f"[INFO] Variable: {resolved_variable_response.variable.name} is resolved from both session storage and transaction. It is reasonable to use either source (fetch is slower but more stable)")
             
         return resolved_variable_responses
 
@@ -581,10 +527,7 @@ class RoutineDiscoveryAgent(BaseModel):
         """
         message = (
             f"Please construct the routine from the routine transactions: {routine_transactions}. "
-            f"Please respond in the following format: {Routine.model_json_schema()}. "
-            f"Fetch operations (1 to 1 with transactions) should be constructed as follows: {RoutineFetchOperation.model_json_schema()}. "
             f"First step of the routine should be to navigate to the target web page and sleep for a bit of time (2-3 seconds). "
-            f"All fetch operations should be constructed as follows: {RoutineFetchOperation.model_json_schema()}. "
             f"Parameters are only the most important arguments. "
             f"You can inject variables by using placeholders. CRITICAL: PLACEHOLDERS ARE REPLACED AT RUNTIME AND THE RESULT MUST BE VALID JSON! "
             f"For STRING values: Use \\\"{{{{parameter_name}}}}\\\" format (escaped quote + placeholder + escaped quote). "
@@ -603,7 +546,7 @@ class RoutineDiscoveryAgent(BaseModel):
             f"Endpoints of the fetch operations should mimick observed network traffic requests! "
             f"Every fetch operation result is written to session storage. "
             f"At the end of the routine return the proper session storage value (likely containing the last fetch operation result). "
-            f"To feed output of a fetch into a subsequent fetch, you can save result to session storage and then use {{sessionStorage:key.to.path}}. "
+            f"To feed output of a fetch into a subsequent fetch, you can save result to session storage and then use {{{{sessionStorage:key.to.path}}}}. "
         )
         self._add_to_message_history("user", message)
 
@@ -612,31 +555,20 @@ class RoutineDiscoveryAgent(BaseModel):
             current_attempt += 1
             
             # call to the LLM API for construction of the routine
-            response = self.client.responses.create(
+            response = self.client.responses.parse(
                 model=self.llm_model,
                 input=[self.message_history[-1]],
                 previous_response_id=self.last_response_id,
                 tools=self.tools,
                 tool_choice="required",
+                text_format=Routine
             )
+            routine = response.output_parsed
+            logger.info(f"\nRoutine:\n{routine.model_dump()}")
             
             # save the response id
             self.last_response_id = response.id
-            
-            # collect the text from the response
-            response_text = collect_text_from_response(response)
-            self._add_to_message_history("assistant", response_text)
-            
-            # parse the response to the pydantic model
-            routine = llm_parse_text_to_model(
-                text=response_text,
-                context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
-                pydantic_model=Routine,
-                client=self.client,
-                llm_model=self.llm_model
-            )
             self._add_to_message_history("assistant", routine.model_dump_json())
-            
             
             # validate the routine
             successful, errors, exception = routine.validate()
@@ -717,30 +649,20 @@ class RoutineDiscoveryAgent(BaseModel):
         self._add_to_message_history("user", message)
         
         # call to the LLM API for getting the test parameters
-        response = self.client.responses.create(
+        response = self.client.responses.parse(
             model=self.llm_model,
             input=[self.message_history[-1]],
             previous_response_id=self.last_response_id,
+            text_format=TestParametersResponse
         )
+        test_parameters_response = response.output_parsed
         
         # save the response id
         self.last_response_id = response.id
+        self._add_to_message_history("assistant", test_parameters_response.model_dump_json())
         
-        # collect the text from the response
-        response_text = collect_text_from_response(response)
-        self._add_to_message_history("assistant", response_text)
-        
-        # parse the response to the pydantic model
-        parsed_response = llm_parse_text_to_model(
-            text=response_text,
-            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
-            pydantic_model=TestParametersResponse,
-            client=self.client,
-            llm_model="gpt-5-nano"
-        )
-        self._add_to_message_history("assistant", parsed_response.model_dump_json())
-        
-        return parsed_response
+        # return the test parameters response
+        return test_parameters_response
 
     def _add_to_message_history(self, role: str, content: str) -> None:
         """
