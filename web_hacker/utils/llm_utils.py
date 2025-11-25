@@ -19,57 +19,6 @@ logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Co
 logger = logging.getLogger(__name__)
 
 
-def llm_parse_text_to_model(
-    text: str,
-    context: str,
-    pydantic_model: Type[BaseModel],
-    client: OpenAI,
-    llm_model: str = "gpt-5-nano",
-    n_tries: int = 3
-) -> BaseModel:
-    """
-    Call to LLM model to parse outtext to a pydantic model.
-    Args:
-        text (str): The text to parse.
-        context (str): The context to use for the parsing (stringified message history between user and assistant).
-        pydantic_model (Type[BaseModel]): The pydantic model to parse the text to.
-        client (OpenAI): The OpenAI client to use.
-        llm_model (str): The LLM model to use.
-        n_tries (int): The number of tries to parse the text.
-    Returns:
-        BaseModel: The parsed pydantic model.
-    """
-    # define system prompt
-    SYSTEM_PROMPT = f"""
-    You are a helpful assistant that parses text to a pydantic model.
-    You must conform to the provided pydantic model schema.
-    """
-
-    message = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Context: {context}"},
-        {"role": "user", "content": f"Text to parse: {text}"}
-    ]
-
-    for current_try in range(n_tries):
-        try:
-            completion = client.chat.completions.parse(
-                model=llm_model,
-                messages=message, 
-                response_format=pydantic_model,
-            )
-            return completion.choices[0].message.parsed
-
-        except Exception as e:
-            logger.warning(f"Try {current_try + 1} failed with error: {e}")
-            message.append({
-                "role": "user", "content": f"Previous attempt failed with error: {e}. Please try again."
-            })
- 
-    logger.error(f"Failed to parse text to model after {n_tries} tries")
-    raise LLMStructuredOutputError(f"Failed to parse text to model after {n_tries} tries")
-
-
 def manual_llm_parse_text_to_model(
     text: str,
     context: str,

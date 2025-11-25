@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 from web_hacker.config import Config
 from web_hacker.routine_discovery.context_manager import ContextManager
-from web_hacker.utils.llm_utils import llm_parse_text_to_model, collect_text_from_response, manual_llm_parse_text_to_model
+from web_hacker.utils.llm_utils import collect_text_from_response, manual_llm_parse_text_to_model
 from web_hacker.data_models.llm_responses import (
     TransactionIdentificationResponse,
     ExtractedVariableResponse,
