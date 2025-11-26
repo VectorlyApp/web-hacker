@@ -636,7 +636,6 @@ class RoutineDiscoveryAgent(BaseModel):
         message = (
             f"Please productionize the routine (from previosu step): {routine.model_dump_json()}"
             f"You need to clean up this routine to follow the following format: {ProductionRoutine.model_json_schema()}"
-            f"Please respond in the following format: {ProductionRoutine.model_json_schema()}"
             f"You immediate output needs to be a valid JSON object that conforms to the production routine schema."
             f"CRITICAL: PLACEHOLDERS ARE REPLACED AT RUNTIME AND MUST RESULT IN VALID JSON! "
             f"EXPLANATION: Placeholders like {{{{key}}}} are replaced at runtime with actual values. The format you choose determines the resulting JSON type. "
