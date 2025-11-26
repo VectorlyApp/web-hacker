@@ -209,7 +209,11 @@ class RoutineDiscoveryAgent(BaseModel):
                         transaction_queue.append(new_transaction_id)
 
         # construct the routine from the routine transactions and resolved variables
-        routine = self.construct_routine(routine_transactions=routine_transactions, resolved_variables=all_resolved_variables)
+        # REVERSE the order of transactions because the queue processing discovers dependencies LAST (Target -> Dep1 -> Dep2),
+        # but we need to execute dependencies FIRST (Dep2 -> Dep1 -> Target).
+        ordered_transactions = dict(reversed(list(routine_transactions.items())))
+        
+        routine = self.construct_routine(routine_transactions=ordered_transactions, resolved_variables=all_resolved_variables)
 
         # save the routine
         save_path = os.path.join(self.output_dir, f"routine.json")
@@ -379,12 +383,19 @@ class RoutineDiscoveryAgent(BaseModel):
         message = (
             f"Extract variables from these network REQUESTS only: {transactions}\n\n"
             "CRITICAL RULES:\n"
-            "1. **requires_resolution=False**: Default to this. HARDCODE values whenever possible (e.g. app versions, static IDs, constants).\n"
-            "2. **requires_resolution=True**: ONLY for dynamic security tokens (CSRF, Auth headers, cookies) that change per session/user.\n"
-            "   - If it's a token (CSRF, JWT, session ID), it MUST be resolved.\n"
-            "   - 'values_to_scan_for' must contain the EXACT raw string value seen in the request (e.g. the actual token string), so we can find where it originated.\n"
-            "3. **System variables**: Device/browser info (User-Agent, screen size) are static (False).\n"
-            "4. **Parameters/Arguments**: These are the fundamental inputs to the flow, directly related to the user's task (e.g. search query, item ID). Mark these as parameters.\n"
+            "1. **requires_resolution=False (STATIC_VALUE)**: Default to this. HARDCODE values whenever possible.\n"
+            "   - Includes: App versions, constants, User-Agents, device info.\n"
+            "   - **API CONTEXT**: Fields like 'hl' (language), 'gl' (region), 'clientName', 'timeZone' are STATIC_VALUE, NOT parameters.\n"
+            "   - **TELEMETRY**: Fields like 'adSignals', 'screenHeight', 'clickTrackingParams' are STATIC_VALUE.\n"
+            "2. **requires_resolution=True (DYNAMIC_TOKEN)**: ONLY for dynamic security tokens that change per session.\n"
+            "   - Includes: CSRF tokens, JWTs, Auth headers, 'visitorData', 'session_id'.\n"
+            "   - **TRACE/REQUEST IDs**: 'x-trace-id', 'request-id', 'correlation-id' MUST be marked as DYNAMIC_TOKEN.\n"
+            "   - **ALSO INCLUDE**: IDs, hashes, or blobs that are NOT user inputs but are required for the request (e.g. 'browseId', 'params' strings, 'clientVersion' if dynamic).\n"
+            "   - 'values_to_scan_for' must contain the EXACT raw string value seen in the request.\n"
+            "   - **RULE**: If it looks like a generated ID or state blob, IT IS A TOKEN, NOT A PARAMETER.\n"
+            "3. **Parameters (PARAMETER)**: ONLY for values that represent the USER'S INTENT or INPUT.\n"
+            "   - Examples: 'search_query', 'videoId', 'channelId', 'cursor', 'page_number'.\n"
+            "   - If the user wouldn't explicitly provide it, it's NOT a parameter.\n"
         )
 
         self._add_to_message_history("user", message)
@@ -518,6 +529,9 @@ class RoutineDiscoveryAgent(BaseModel):
             # parse the response to the pydantic model
             resolved_variable_responses.append(resolved_variable_response)
             
+            logger.info(f"Resolved variable response: {resolved_variable_response.model_dump()}")
+            
+            
             resolved_transaction_source = resolved_variable_response.transaction_source
             logger.info(f"Resolved transaction source: {resolved_transaction_source}")
             resolved_session_storage_source = resolved_variable_response.session_storage_source
@@ -527,7 +541,10 @@ class RoutineDiscoveryAgent(BaseModel):
             
             # number of sources resolved
             sources = [resolved_transaction_source, resolved_session_storage_source, resolved_window_property_source]
+            
+            logger.info(f"Sources: {sources}")
             sources = [source for source in sources if source is not None]
+            logger.info(f"Sources after filtering: {sources}")
             num_sources_resolved = sources.count(True)
             logger.info(f"Number of sources resolved: {num_sources_resolved}")
             
@@ -548,6 +565,8 @@ class RoutineDiscoveryAgent(BaseModel):
         message = (
             f"Please construct the routine from the routine transactions: {routine_transactions}."
             f"These are the resolved variables: {resolved_variables}"
+            f"IMPORTANT: The transactions are listed in EXECUTION ORDER (Dependencies first -> Target last). "
+            f"You should generally create fetch operations in the order provided."
             f"First step of the routine should be to navigate to the target web page and sleep for a bit of time (2-3 seconds). "
             f"Parameters are only the most important arguments. "
             f"You can inject variables by using placeholders. CRITICAL: PLACEHOLDERS ARE REPLACED AT RUNTIME AND THE RESULT MUST BE VALID JSON! "
