@@ -1,0 +1,93 @@
+{
+  "id": "Routine_8dc7e57e-821c-4f0f-b0f5-6536b402c6ad",
+  "created_at": 1764865113,
+  "updated_at": 1764865113,
+  "name": "USA Spending Award Count",
+  "description": "Get spending award counts from usaspending.gov. Mimicks a specific curl request.",
+  "operations": [
+    {
+      "type": "fetch",
+      "endpoint": {
+        "url": "https://api.usaspending.gov/api/v2/search/spending_by_award_count/",
+        "description": null,
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json, text/plain, */*",
+          "x-requested-with": "USASpendingFrontend"
+        },
+        "body": {
+          "filters": {
+            "keywords": [
+              "\"{{key_words}}\""
+            ],
+            "time_period": [
+              {
+                "start_date": "\"{{start_date}}\"",
+                "end_date": "\"{{end_date}}\""
+              }
+            ]
+          },
+          "spending_level": "awards",
+          "auditTrail": "Results View - Tab Counts"
+        },
+        "credentials": "same-origin"
+      },
+      "session_storage_key": "spending_counts"
+    },
+    {
+      "type": "return",
+      "session_storage_key": "spending_counts"
+    }
+  ],
+  "incognito": true,
+  "parameters": [
+    {
+      "name": "key_words",
+      "type": "string",
+      "required": true,
+      "description": "Keywords to search for, as a stringified list of quoted strings (e.g. '\"keyword1\", \"keyword2\"').",
+      "default": "\"ukaine\", \"drone\"",
+      "examples": [
+        "\"ukaine\", \"drone\""
+      ],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": "^\"[^\"]+\"(?:,\\s*\"[^\"]+\")*$",
+      "enum_values": null,
+      "format": null
+    },
+    {
+      "name": "start_date",
+      "type": "date",
+      "required": true,
+      "description": "Start date for the time period filter",
+      "default": "2007-10-01",
+      "examples": [],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": null,
+      "enum_values": null,
+      "format": "YYYY-MM-DD"
+    },
+    {
+      "name": "end_date",
+      "type": "date",
+      "required": true,
+      "description": "End date for the time period filter",
+      "default": "2026-09-30",
+      "examples": [],
+      "min_length": null,
+      "max_length": null,
+      "min_value": null,
+      "max_value": null,
+      "pattern": null,
+      "enum_values": null,
+      "format": "YYYY-MM-DD"
+    }
+  ]
+}

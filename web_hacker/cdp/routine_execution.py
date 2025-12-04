@@ -62,6 +62,7 @@ def _generate_fetch_js(
     body_js_literal: str,
     endpoint_method: str,
     endpoint_credentials: str,
+    session_storage_key: str | None = None,
 ) -> str:
     """Generate JavaScript code for fetch operation."""
     hdrs_json = json.dumps(
@@ -243,7 +244,9 @@ def _generate_fetch_js(
         "  try {",
         "    const resp = await fetch(resolvedUrl, opts);",
         "    const status = resp.status;",
-        "    const val = await resp.text(); return {status, value: val};",
+        "    const val = await resp.text();",
+        f"    if ({'true' if session_storage_key else 'false'}) {{ try {{ window.sessionStorage.setItem({json.dumps(session_storage_key) if session_storage_key else 'null'}, JSON.stringify(val)); }} catch(e) {{}} }}",
+        "    return {status, value: val};",
         "  } catch(e) {",
         "    return { __err: 'fetch failed: ' + String(e) };",
         "  }",
@@ -373,6 +376,7 @@ def _execute_fetch_in_session(
     send_cmd: callable,
     recv_until: callable,
     timeout: float,
+    session_storage_key: str | None = None,
 ):
     """
     Execute a fetch operation within an existing CDP session.
@@ -386,6 +390,7 @@ def _execute_fetch_in_session(
         send_cmd: Function to send CDP commands.
         recv_until: Function to receive CDP responses.
         timeout: Request timeout.
+        session_storage_key: Optional session storage key to store the result.
 
     Returns:
         dict: Result with "ok" status and "result" data.
@@ -433,6 +438,7 @@ def _execute_fetch_in_session(
         body_js_literal=body_js_literal,
         endpoint_method=endpoint.method,
         endpoint_credentials=endpoint.credentials,
+        session_storage_key=session_storage_key,
     )
 
     # Execute the fetch
@@ -775,15 +781,8 @@ def execute_routine(
                     send_cmd=send_cmd,
                     recv_until=recv_until,
                     timeout=timeout,
+                    session_storage_key=operation.session_storage_key,
                 )
-
-                # Store result in session storage if key provided
-                if operation.session_storage_key and fetch_result.get("ok"):
-                    result_data = fetch_result.get("result", {}).get("value", {})
-                    js = f"window.sessionStorage.setItem('{operation.session_storage_key}', JSON.stringify({json.dumps(result_data)}));"
-                    send_cmd(
-                        "Runtime.evaluate", {"expression": js}, session_id=session_id
-                    )
 
             elif isinstance(operation, RoutineReturnOperation):
                 # Get result from session storage
