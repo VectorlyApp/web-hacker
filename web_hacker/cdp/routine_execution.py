@@ -246,7 +246,7 @@ def _generate_fetch_js(
         "    const status = resp.status;",
         "    const val = await resp.text();",
         f"    if ({'true' if session_storage_key else 'false'}) {{ try {{ window.sessionStorage.setItem({json.dumps(session_storage_key) if session_storage_key else 'null'}, JSON.stringify(val)); }} catch(e) {{}} }}",
-        "    return {status, value: val};",
+        "    return {status, value: 'success'};",
         "  } catch(e) {",
         "    return { __err: 'fetch failed: ' + String(e) };",
         "  }",
