@@ -787,24 +787,61 @@ def execute_routine(
 
             elif isinstance(operation, RoutineReturnOperation):
                 # Get result from session storage
-                js = f"window.sessionStorage.getItem('{operation.session_storage_key}')"
+                # Use chunking to retrieve large values from session storage
+                chunk_size = 256 * 1024  # 256KB chunks
+                
+                # First get the length
+                len_js = f"window.sessionStorage.getItem('{operation.session_storage_key}')?.length || 0"
                 eval_id = send_cmd(
                     "Runtime.evaluate",
-                    {"expression": js, "returnByValue": True},
+                    {"expression": len_js, "returnByValue": True},
                     session_id=session_id,
                 )
                 reply = recv_until(
                     lambda m: m.get("id") == eval_id, time.time() + timeout
                 )
-                stored_value = reply["result"]["result"].get("value")
+                if "error" in reply:
+                     raise RuntimeError(f"Failed to get storage length: {reply['error']}")
+                     
+                total_len = reply["result"]["result"].get("value", 0)
+                logger.info(f"Retrieving {total_len} bytes from session storage key '{operation.session_storage_key}'")
+                
+                if total_len == 0:
+                    result = None
+                else:
+                    stored_value = ""
+                    for offset in range(0, total_len, chunk_size):
+                        # Slice the string in JS
+                        chunk_js = f"""
+                        (function() {{
+                            const val = window.sessionStorage.getItem('{operation.session_storage_key}');
+                            return val.substring({offset}, {min(offset + chunk_size, total_len)});
+                        }})()
+                        """
+                        logger.info(f"Retrieving chunk at offset {offset}/{total_len} (size: {chunk_size})")
+                        eval_id = send_cmd(
+                            "Runtime.evaluate",
+                            {"expression": chunk_js, "returnByValue": True},
+                            session_id=session_id,
+                        )
+                        reply = recv_until(
+                            lambda m: m.get("id") == eval_id, time.time() + timeout
+                        )
+                        if "error" in reply:
+                             logger.error(f"Failed to retrieve chunk at offset {offset}: {reply['error']}")
+                             raise RuntimeError(f"Failed to retrieve chunk at offset {offset}: {reply['error']}")
+                        
+                        chunk = reply["result"]["result"].get("value", "")
+                        logger.info(f"Retrieved chunk at offset {offset}, size: {len(chunk)}")
+                        stored_value += chunk
+                        # Small sleep to yield to event loop if needed
+                        time.sleep(0.01)
 
-                if stored_value:
                     try:
                         result = json.loads(stored_value)
                     except Exception as e:
                         result = stored_value
-                else:
-                    result = None
+
 
         return {"ok": True, "result": result}
 
