@@ -853,8 +853,13 @@ def execute_routine(
                         result = stored_value
 
 
-        return {"ok": True, "result": result, "placeholder_resolution": all_placeholder_resolution}
-
+        return {
+            "ok": True,
+            "result": result,
+            "metadata": {
+                "all_placeholder_resolution": all_placeholder_resolution
+            },
+        }
     except Exception as e:
         return {"ok": False, "result": f"Routine execution failed: {e}"}
     finally:
