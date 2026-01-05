@@ -14,7 +14,7 @@ import sys
 from web_hacker.config import Config
 from web_hacker.cdp.cdp_session import CDPSession
 from web_hacker.data_models.routine.endpoint import ResourceType
-from web_hacker.cdp.tab_managements import cdp_new_tab, dispose_context
+from web_hacker.cdp.connection import cdp_new_tab, dispose_context
 from web_hacker.utils.logger import get_logger
 
 logger = get_logger(__name__)

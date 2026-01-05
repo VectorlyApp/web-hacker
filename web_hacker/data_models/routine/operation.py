@@ -15,13 +15,13 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, Field, field_validator
 
 from web_hacker.data_models.routine.endpoint import Endpoint
-from web_hacker.data_models.routine.execution import RoutineExecutionContext
+from web_hacker.data_models.routine.execution import RoutineExecutionContext, FetchExecutionResult
 from web_hacker.data_models.routine.parameter import VALID_PLACEHOLDER_PREFIXES, BUILTIN_PARAMETERS
 from web_hacker.data_models.ui_elements import MouseButton, ElementState, ScrollBehavior, HTMLScope
-from web_hacker.utils.cdp_utils import execute_fetch_in_session
 from web_hacker.utils.data_utils import apply_params, assert_balanced_js_delimiters
 from web_hacker.utils.logger import get_logger
 from web_hacker.utils.js_utils import (
+    generate_fetch_js,
     generate_click_js,
     generate_type_js,
     generate_scroll_element_js,
@@ -164,6 +164,91 @@ class RoutineFetchOperation(RoutineOperation):
     endpoint: Endpoint
     session_storage_key: str | None = None
 
+    def _execute_fetch(
+        self,
+        routine_execution_context: RoutineExecutionContext,
+    ) -> FetchExecutionResult:
+        """Execute the fetch request and return the result."""
+        from web_hacker.utils.web_socket_utils import send_cmd, recv_until
+
+        parameters_dict = routine_execution_context.parameters_dict or {}
+
+        # Apply parameters to endpoint
+        fetch_url = apply_params(self.endpoint.url, parameters_dict)
+        headers: dict = {}
+        if self.endpoint.headers:
+            headers_str = json.dumps(self.endpoint.headers)
+            headers_str_interpolated = apply_params(headers_str, parameters_dict)
+            headers = json.loads(headers_str_interpolated)
+
+        body = None
+        if self.endpoint.body:
+            body_str = json.dumps(self.endpoint.body)
+            body_str_interpolated = apply_params(body_str, parameters_dict)
+            body = json.loads(body_str_interpolated)
+
+        # Serialize body to JS string literal
+        if body is None:
+            body_js_literal = "null"
+        elif isinstance(body, (dict, list)):
+            body_js_literal = json.dumps(body)
+        elif isinstance(body, bytes):
+            body_js_literal = json.dumps(body.decode("utf-8", errors="ignore"))
+        else:
+            body_js_literal = json.dumps(str(body))
+
+        # Build JS using the shared generator
+        expr = generate_fetch_js(
+            fetch_url=fetch_url,
+            headers=headers or {},
+            body_js_literal=body_js_literal,
+            endpoint_method=self.endpoint.method,
+            endpoint_credentials=self.endpoint.credentials,
+            session_storage_key=self.session_storage_key,
+        )
+
+        # Execute the fetch
+        ws = routine_execution_context.ws
+        session_id = routine_execution_context.session_id
+        timeout = routine_execution_context.timeout
+
+        logger.info(f"Sending Runtime.evaluate for fetch with timeout={timeout}s")
+        eval_id = send_cmd(
+            ws,
+            "Runtime.evaluate",
+            {
+                "expression": expr,
+                "awaitPromise": True,
+                "returnByValue": True,
+                "timeout": int(timeout * 1000),
+            },
+            session_id=session_id,
+        )
+
+        reply = recv_until(ws, lambda m: m.get("id") == eval_id, time.time() + timeout)
+
+        if "error" in reply:
+            logger.error(f"Error in _execute_fetch (CDP error): {reply['error']}")
+            return FetchExecutionResult(ok=False, error=reply["error"])
+
+        payload = reply["result"]["result"].get("value")
+
+        if isinstance(payload, dict) and payload.get("__err"):
+            logger.error(f"Error in _execute_fetch (JS error): {payload.get('__err')}")
+            return FetchExecutionResult(
+                ok=False,
+                error=payload.get("__err"),
+                resolved_values=payload.get("resolvedValues", {}),
+            )
+
+        logger.info(f"Fetch result payload: {str(payload)[:1000]}...")
+
+        return FetchExecutionResult(
+            ok=True,
+            result=payload.get("value"),
+            resolved_values=payload.get("resolvedValues", {}),
+        )
+
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Execute the fetch operation."""
 
@@ -185,14 +270,7 @@ class RoutineFetchOperation(RoutineOperation):
             routine_execution_context.current_url = origin_url
             time.sleep(3)  # Wait for page to load
 
-        fetch_result = execute_fetch_in_session(
-            ws=routine_execution_context.ws,
-            endpoint=self.endpoint,
-            parameters_dict=routine_execution_context.parameters_dict,
-            session_id=routine_execution_context.session_id,
-            timeout=routine_execution_context.timeout,
-            session_storage_key=self.session_storage_key,
-        )
+        fetch_result = self._execute_fetch(routine_execution_context)
 
         # Check for errors
         if not fetch_result.ok:

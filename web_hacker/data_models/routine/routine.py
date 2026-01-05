@@ -24,7 +24,7 @@ from web_hacker.data_models.routine.parameter import (
     BUILTIN_PARAMETERS,
     VALID_PLACEHOLDER_PREFIXES,
 )
-from web_hacker.utils.cdp_utils import cdp_new_tab, dispose_context
+from web_hacker.cdp.connection import cdp_new_tab, dispose_context
 from web_hacker.data_models.routine.placeholder import (
     PlaceholderQuoteType,
     extract_placeholders_from_json_str,

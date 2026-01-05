@@ -17,8 +17,6 @@ Example commands:
 import argparse
 import json
 
-from web_hacker.config import Config
-from web_hacker.cdp.routine_execution import execute_routine
 from web_hacker.data_models.routine.routine import Routine
 from web_hacker.utils.logger import get_logger
 
@@ -57,15 +55,12 @@ def main(routine_path: str | None = None, parameters_path: str | None = None, pa
     routine_data = json.load(open(routine_path))
     routine = Routine(**routine_data)
     
-    # Execute routine
+    # Execute routine using the Routine.execute() method
     try:
-        result = execute_routine(
-            routine=routine,
+        result = routine.execute(
             parameters_dict=parameters_dict_parsed,
             timeout=60.0,
-            wait_after_navigate_sec=3.0,
             close_tab_when_done=False,
-            incognito=True,
         )
         logger.info(f"Result: {result}")
         

@@ -13,7 +13,7 @@ import threading
 import requests
 
 from ..cdp.cdp_session import CDPSession
-from ..cdp.tab_managements import cdp_new_tab, dispose_context
+from ..cdp.connection import cdp_new_tab, dispose_context
 from ..data_models.routine.endpoint import ResourceType
 from ..utils.exceptions import BrowserConnectionError
 from ..utils.logger import get_logger
