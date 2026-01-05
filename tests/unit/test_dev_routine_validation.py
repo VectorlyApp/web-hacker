@@ -5,7 +5,7 @@ Unit tests for Routine.validate method in dev_routine.py.
 """
 
 import pytest
-from web_hacker.data_models.dev_routine import (
+from web_hacker.data_models.routine.dev_routine import (
     Routine,
     Parameter,
     Endpoint,

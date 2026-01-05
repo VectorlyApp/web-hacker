@@ -5,7 +5,6 @@ Browser monitoring SDK wrapper.
 from typing import Optional, Set
 from pathlib import Path
 import json
-import logging
 import os
 import sys
 import time
@@ -17,8 +16,9 @@ from ..cdp.cdp_session import CDPSession
 from ..cdp.tab_managements import cdp_new_tab, dispose_context
 from ..data_models.routine.endpoint import ResourceType
 from ..utils.exceptions import BrowserConnectionError
+from ..utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class BrowserMonitor:

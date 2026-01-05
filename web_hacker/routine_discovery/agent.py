@@ -4,7 +4,6 @@ web_hacker/routine_discovery/agent.py
 Agent for discovering routines from the network transactions.
 """
 
-import logging
 import json
 from uuid import uuid4
 import os
@@ -23,12 +22,12 @@ from web_hacker.data_models.llm_responses import (
     ResolvedVariableResponse,
     TestParametersResponse
 )
-from web_hacker.data_models.production_routine import Routine as ProductionRoutine
-from web_hacker.data_models.dev_routine import Routine, RoutineFetchOperation
+from web_hacker.data_models.routine.routine import Routine as ProductionRoutine
+from web_hacker.data_models.routine.dev_routine import Routine, RoutineFetchOperation
 from web_hacker.utils.exceptions import TransactionIdentificationFailedError
+from web_hacker.utils.logger import get_logger
 
-logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RoutineDiscoveryAgent(BaseModel):

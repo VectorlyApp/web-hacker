@@ -11,27 +11,27 @@ from enum import StrEnum
 
 from pydantic import Field, model_validator
 
-from cdpkit.data_models.resource_base import ResourceBase
-from cdpkit.data_models.routine.execution import RoutineExecutionContext, RoutineExecutionResult
-from cdpkit.data_models.routine.operation import (
+from web_hacker.data_models.resource_base import ResourceBase
+from web_hacker.data_models.routine.execution import RoutineExecutionContext, RoutineExecutionResult
+from web_hacker.data_models.routine.operation import (
     RoutineFetchOperation,
     RoutineNavigateOperation,
     RoutineOperationUnion,
 )
-from cdpkit.data_models.routine.parameter import (
+from web_hacker.data_models.routine.parameter import (
     Parameter,
     ParameterType,
     BUILTIN_PARAMETERS,
     VALID_PLACEHOLDER_PREFIXES,
 )
-from cdpkit.utils.cdp_utils import cdp_new_tab, dispose_context
-from cdpkit.utils.data_utils import (
-    extract_base_url_from_url,
-    extract_placeholders_from_json_str,
+from web_hacker.utils.cdp_utils import cdp_new_tab, dispose_context
+from web_hacker.data_models.routine.placeholder import (
     PlaceholderQuoteType,
+    extract_placeholders_from_json_str,
 )
-from cdpkit.utils.logger import get_logger
-from cdpkit.utils.web_socket_utils import send_cmd, recv_until
+from web_hacker.utils.data_utils import extract_base_url_from_url
+from web_hacker.utils.logger import get_logger
+from web_hacker.utils.web_socket_utils import send_cmd, recv_until
 
 logger = get_logger(name=__name__)
 

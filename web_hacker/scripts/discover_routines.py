@@ -5,7 +5,6 @@ Script for discovering routines from the network transactions.
 """
 
 from argparse import ArgumentParser
-import logging
 import os
 
 from openai import OpenAI
@@ -14,9 +13,9 @@ from web_hacker.config import Config
 from web_hacker.utils.exceptions import ApiKeyNotFoundError
 from web_hacker.routine_discovery.agent import RoutineDiscoveryAgent
 from web_hacker.routine_discovery.context_manager import ContextManager
+from web_hacker.utils.logger import get_logger
 
-logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def main() -> None:

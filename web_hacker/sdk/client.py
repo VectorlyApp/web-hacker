@@ -11,7 +11,7 @@ from ..utils.exceptions import ApiKeyNotFoundError
 from .monitor import BrowserMonitor
 from .discovery import RoutineDiscovery
 from .execution import RoutineExecutor
-from ..data_models.production_routine import Routine
+from ..data_models.routine.routine import Routine
 
 
 class WebHacker:

@@ -39,6 +39,7 @@ dependencies = [
     "pydantic>=2.11.4",
     "python-dotenv>=1.2.1",
     "requests>=2.31.0",
+    "tldextract>=5.1.0",
     "websockets>=15.0.1",
     "websocket-client>=1.6.0",
     "beautifulsoup4>=4.14.2",

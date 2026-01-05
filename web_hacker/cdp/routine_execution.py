@@ -5,7 +5,6 @@ Execute a routine using Chrome DevTools Protocol.
 """
 
 import json
-import logging
 import random
 import re
 import time
@@ -16,17 +15,18 @@ import requests
 import websocket
 
 from web_hacker.config import Config
-from web_hacker.data_models.production_routine import (
-    Routine,
-    Endpoint,
+from web_hacker.data_models.routine.endpoint import Endpoint
+from web_hacker.data_models.routine.operation import (
     RoutineFetchOperation,
     RoutineNavigateOperation,
     RoutineReturnOperation,
     RoutineSleepOperation,
 )
+from web_hacker.data_models.routine.routine import Routine
+from web_hacker.utils.data_utils import apply_params
+from web_hacker.utils.logger import get_logger
 
-logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _get_browser_websocket_url(remote_debugging_address: str) -> str:
@@ -395,17 +395,17 @@ def _execute_fetch_in_session(
         parameters_dict = {}
 
     # Apply parameters to endpoint
-    fetch_url = _apply_params(endpoint.url, parameters_dict)
+    fetch_url = apply_params(endpoint.url, parameters_dict)
     headers = {}
     if endpoint.headers:
         headers_str = json.dumps(endpoint.headers)  # convert headers from dict to str
-        headers_str_interpolated = _apply_params(headers_str, parameters_dict)
+        headers_str_interpolated = apply_params(headers_str, parameters_dict)
         headers = json.loads(headers_str_interpolated)  # convert headers from str to dict
 
     body = None
     if endpoint.body:
         body_str = json.dumps(endpoint.body)  # convert body from dict to str
-        body_str_interpolated = _apply_params(body_str, parameters_dict)
+        body_str_interpolated = apply_params(body_str, parameters_dict)
         body = json.loads(body_str_interpolated)  # convert body from str to dict
         
     # Prepare headers and body for injection
@@ -468,53 +468,6 @@ def _execute_fetch_in_session(
         "result": payload.get("value"),
         "placeholder_resolution": payload.get("resolvedValues", {})
     }
-
-
-def _apply_params(text: str, parameters_dict: dict | None) -> str:
-    """
-    Replace parameter placeholders in text with actual values.
-
-    Only replaces {{param}} where 'param' is in parameters_dict.
-    Leaves other placeholders like {{sessionStorage:...}} untouched.
-    
-    Follows the pattern from test.py:
-    - For string values in quoted placeholders: insert raw string (no quotes)
-    - For non-string values in quoted placeholders: use json.dumps(value)
-    - For unquoted placeholders: use str(value)
-
-    Args:
-        text: Text containing parameter placeholders.
-        parameters_dict: Dictionary of parameter values.
-
-    Returns:
-        str: Text with parameters replaced.
-    """
-    if not text or not parameters_dict:
-        return text
-    
-    for key, value in parameters_dict.items():
-        # Compute replacement based on value type (following test.py pattern)
-        if isinstance(value, str):
-            literal = value  # For strings, insert raw string (no quotes)
-        else:
-            literal = json.dumps(value)  # For numbers/bools/null, use JSON encoding
-        
-        escaped_key = re.escape(key)
-        
-        # Pattern 1: Simple quoted placeholder "{{key}}" in JSON string
-        # Matches: "{{key}}" (when the JSON value itself is the string "{{key}}")
-        # Use regular string concatenation to avoid f-string brace escaping issues
-        simple_quoted = '"' + r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}' + '"'
-        text = re.sub(simple_quoted, literal, text)
-        
-        # Pattern 2: Escaped quote variant \"{{key}}\"
-        # In JSON string this appears as: \\"{{key}}\\" 
-        # Use regular string concatenation to build pattern with proper escaping
-        double_escaped = r'\\"' + r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}' + r'\\"'
-        text = re.sub(double_escaped, literal, text)
-        
-
-    return text
 
 
 def _generate_random_user_agent() -> str:
@@ -755,7 +708,7 @@ def execute_routine(
             )
             if isinstance(operation, RoutineNavigateOperation):
                 # Navigate to URL
-                url = _apply_params(operation.url, parameters_dict)
+                url = apply_params(operation.url, parameters_dict)
                 send_cmd("Page.navigate", {"url": url}, session_id=session_id)
                 current_url = url
                 if wait_after_navigate_sec > 0:
@@ -769,7 +722,7 @@ def execute_routine(
                 # Navigate to origin URL if we haven't already
                 if not current_url:
 
-                    endpoint_url = _apply_params(
+                    endpoint_url = apply_params(
                         operation.endpoint.url, parameters_dict
                     )
                     parsed = urlparse(endpoint_url)

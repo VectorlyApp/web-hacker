@@ -12,18 +12,18 @@ import pytest
 from pydantic import ValidationError
 
 from web_hacker.utils.data_utils import load_data
-from web_hacker.data_models.production_routine import (
-    ResourceBase,
-    Routine,
-    Parameter,
-    ParameterType,
-    Endpoint,
-    HTTPMethod,
-    CREDENTIALS,
+from web_hacker.data_models.routine.endpoint import Endpoint, HTTPMethod, CREDENTIALS
+from web_hacker.data_models.routine.operation import (
     RoutineNavigateOperation,
     RoutineSleepOperation,
     RoutineFetchOperation,
     RoutineReturnOperation,
+)
+from web_hacker.data_models.routine.routine import (
+    ResourceBase,
+    Routine,
+    Parameter,
+    ParameterType,
 )
 
 

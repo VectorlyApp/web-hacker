@@ -5,7 +5,6 @@ CDP-based web scraper that blocks trackers and captures network requests.
 """
 
 import argparse
-import logging
 import os
 import json
 import time
@@ -16,9 +15,9 @@ from web_hacker.config import Config
 from web_hacker.cdp.cdp_session import CDPSession
 from web_hacker.data_models.routine.endpoint import ResourceType
 from web_hacker.cdp.tab_managements import cdp_new_tab, dispose_context
+from web_hacker.utils.logger import get_logger
 
-logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ---- Configuration ----
 

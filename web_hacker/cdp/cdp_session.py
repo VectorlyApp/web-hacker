@@ -5,7 +5,6 @@ CDP Session management for web scraping with Chrome DevTools Protocol.
 """
 
 import json
-import logging
 import os
 import websocket
 import threading
@@ -16,9 +15,9 @@ from web_hacker.cdp.network_monitor import NetworkMonitor
 from web_hacker.cdp.storage_monitor import StorageMonitor
 from web_hacker.cdp.interaction_monitor import InteractionMonitor
 from web_hacker.cdp.window_property_monitor import WindowPropertyMonitor
+from web_hacker.utils.logger import get_logger
 
-logging.basicConfig(level=Config.LOG_LEVEL, format=Config.LOG_FORMAT, datefmt=Config.LOG_DATE_FORMAT)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class CDPSession:

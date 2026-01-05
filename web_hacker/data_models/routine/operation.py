@@ -14,14 +14,14 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
 
-from cdpkit.data_models.routine.endpoint import Endpoint
-from cdpkit.data_models.routine.execution import RoutineExecutionContext
-from cdpkit.data_models.routine.parameter import VALID_PLACEHOLDER_PREFIXES, BUILTIN_PARAMETERS
-from cdpkit.data_models.ui_interaction import MouseButton, ElementState, ScrollBehavior, HTMLScope
-from cdpkit.utils.cdp_utils import execute_fetch_in_session
-from cdpkit.utils.data_utils import apply_params, assert_balanced_js_delimiters
-from cdpkit.utils.logger import get_logger
-from cdpkit.utils.js_utils import (
+from web_hacker.data_models.routine.endpoint import Endpoint
+from web_hacker.data_models.routine.execution import RoutineExecutionContext
+from web_hacker.data_models.routine.parameter import VALID_PLACEHOLDER_PREFIXES, BUILTIN_PARAMETERS
+from web_hacker.data_models.ui_elements import MouseButton, ElementState, ScrollBehavior, HTMLScope
+from web_hacker.utils.cdp_utils import execute_fetch_in_session
+from web_hacker.utils.data_utils import apply_params, assert_balanced_js_delimiters
+from web_hacker.utils.logger import get_logger
+from web_hacker.utils.js_utils import (
     generate_click_js,
     generate_type_js,
     generate_scroll_element_js,
@@ -162,7 +162,6 @@ class RoutineFetchOperation(RoutineOperation):
     type: Literal[RoutineOperationTypes.FETCH] = RoutineOperationTypes.FETCH
     endpoint: Endpoint
     session_storage_key: str | None = None
-    data_sanitizer: DataSanitizerUnion | None = None
     
     def execute(self, routine_execution_context: RoutineExecutionContext) -> None:
         """Execute the fetch operation."""
@@ -300,6 +299,25 @@ class NetworkSniffingMethod(StrEnum):
     FIRST = "first"
     LAST = "last"
 
+class RoutineNetworkSniffingOperation(RoutineOperation):
+    """
+    Network interception operation for routine.
+    
+    Args:
+        type (Literal[RoutineOperationTypes.NETWORK_SNIFFING]): The type of operation.
+        url_pattern (str): regex pattern for the url to intercept.
+        session_storage_key (str): The session storage key to save the result to.
+        element (NetworkTransactionElement | None): The element to save the result to.
+        method (NetworkSniffingMethod): The method to save the result to.
+    
+    Returns:
+        RoutineNetworkSniffingOperation: The interpolated operation.
+    """
+    type: Literal[RoutineOperationTypes.NETWORK_SNIFFING] = RoutineOperationTypes.NETWORK_SNIFFING
+    url_pattern: str
+    session_storage_key: str
+    element: NetworkTransactionElement | None = None
+    method: NetworkSniffingMethod = NetworkSniffingMethod.LIST
 
 class RoutineGetCookiesOperation(RoutineOperation):
     """

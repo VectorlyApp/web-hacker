@@ -9,15 +9,15 @@ from pathlib import Path
 import pytest
 
 from web_hacker.utils.data_utils import load_data
-from web_hacker.data_models.production_routine import (
+from web_hacker.data_models.routine.endpoint import Endpoint, HTTPMethod, CREDENTIALS
+from web_hacker.data_models.routine.operation import (
+    RoutineNavigateOperation,
+    RoutineFetchOperation,
+)
+from web_hacker.data_models.routine.routine import (
     Routine,
     Parameter,
     ParameterType,
-    RoutineNavigateOperation,
-    RoutineFetchOperation,
-    Endpoint,
-    HTTPMethod,
-    CREDENTIALS,
 )
 
 
