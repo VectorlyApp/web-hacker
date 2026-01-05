@@ -35,6 +35,7 @@ from web_hacker.utils.js_utils import (
     generate_download_js,
     generate_js_evaluate_with_storage_js,
 )
+from web_hacker.utils.web_socket_utils import send_cmd, recv_until
 
 logger = get_logger(name=__name__)
 
@@ -169,8 +170,6 @@ class RoutineFetchOperation(RoutineOperation):
         routine_execution_context: RoutineExecutionContext,
     ) -> FetchExecutionResult:
         """Execute the fetch request and return the result."""
-        from web_hacker.utils.web_socket_utils import send_cmd, recv_until
-
         parameters_dict = routine_execution_context.parameters_dict or {}
 
         # Apply parameters to endpoint

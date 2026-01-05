@@ -4,6 +4,7 @@ web_hacker/utils/data_utils.py
 Utility functions for loading and writing data.
 """
 
+import base64
 import copy
 import datetime
 import json
@@ -143,6 +144,40 @@ def write_json_file(path: str, obj: Any) -> None:
     """
     with open(path, mode="w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
+
+
+def save_data_to_file(
+    data: Any,
+    file_path: str,
+    is_base64: bool = False,
+) -> None:
+    """
+    Save data to file, creating directories as needed.
+    
+    Args:
+        data: The data to save (dict, list, str, or base64-encoded string).
+        file_path: Path to save the file to.
+        is_base64: If True, decode data as base64 and write as binary.
+    """
+    os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
+    
+    if data is None:
+        logger.warning("Data is None. Skipping file save.")
+        return
+    
+    if is_base64 and isinstance(data, str):
+        raw_data = base64.b64decode(data)
+        with open(file_path, mode="wb") as f:
+            f.write(raw_data)
+        logger.info(f"Saved data to: {file_path} ({len(raw_data)} bytes)")
+    elif isinstance(data, (dict, list)):
+        with open(file_path, mode="w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        logger.info(f"Saved data to: {file_path}")
+    else:
+        with open(file_path, mode="w", encoding="utf-8", errors="replace") as f:
+            f.write(str(data))
+        logger.info(f"Saved data to: {file_path}")
 
 
 def get_set_cookie_values(headers: dict) -> list:
