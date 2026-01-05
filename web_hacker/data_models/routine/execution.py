@@ -68,19 +68,3 @@ class FetchExecutionResult(BaseModel):
     result: dict | str | None = Field(default=None, description="The result of the fetch execution.")
     error: str | None = Field(default=None, description="Error message from the fetch execution.")
     resolved_values: dict[str, str | None] = Field(default_factory=dict, description="The placeholder resolution of the fetch execution.")
-
-class RoutineExecutionState: 
-    # NOTE: THIS IS A LEGACY CLASS USED BY BROWSER_HANDLER
-    # NOTE: servers repo still uses BROWSER_HANDLER so we cannot remove it yet
-    """
-    Per-routine execution state for network interception tracking.
-    Holds compiled regex patterns and captured request/response data keyed by requestId.
-    """
-
-    def __init__(self) -> None:
-        self.active: bool = False
-        self.patterns: list[tuple[re.Pattern[str], str]] = []  # (compiled_regex, session_storage_key)
-        self.requests: dict[str, dict[str, Any]] = {}
-        self.matches: dict[str, str] = {}
-        self.responses: dict[str, dict[str, Any]] = {}
-

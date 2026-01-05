@@ -10,7 +10,6 @@ import websocket
 import threading
 import time
 
-from web_hacker.config import Config
 from web_hacker.cdp.network_monitor import NetworkMonitor
 from web_hacker.cdp.storage_monitor import StorageMonitor
 from web_hacker.cdp.interaction_monitor import InteractionMonitor

@@ -12,25 +12,8 @@ from typing import Union, Literal
 
 from pydantic import BaseModel
 
-
-class HTTPMethod(StrEnum):
-    """
-    Supported HTTP methods for API endpoints.
-    """
-    GET = "GET"
-    POST = "POST"
-    PUT = "PUT"
-    DELETE = "DELETE"
-    PATCH = "PATCH"
-
-
-class CREDENTIALS(StrEnum):
-    """
-    Supported credentials modes for API requests.
-    """
-    SAME_ORIGIN = "same-origin"
-    INCLUDE = "include"
-    OMIT = "omit"
+from web_hacker.data_models.routine.endpoint import HTTPMethod, CREDENTIALS
+from web_hacker.data_models.routine.parameter import Parameter
 
 
 class Endpoint(BaseModel):
@@ -43,24 +26,6 @@ class Endpoint(BaseModel):
     headers: str
     body: str
     credentials: CREDENTIALS = CREDENTIALS.SAME_ORIGIN
-    
-
-class Parameter(BaseModel):
-    """
-    Parameter model with comprehensive validation and type information.
-    
-    Fields:
-        name (str): Parameter name (must be valid Python identifier)
-        required (bool): Whether parameter is required
-        description (str): Human-readable parameter description
-        default (str | None): Default value if not provided
-        examples (list[str]): Example values
-    """
-    name: str
-    required: bool = True
-    description: str
-    default: str | None = None
-    examples: list[str] = []
 
 
 class RoutineOperationTypes(StrEnum):

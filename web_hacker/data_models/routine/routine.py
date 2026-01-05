@@ -7,7 +7,6 @@ Routine data model.
 import ast
 import json
 import time
-from enum import StrEnum
 
 from pydantic import BaseModel, Field, model_validator
 
