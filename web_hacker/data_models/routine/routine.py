@@ -9,9 +9,8 @@ import json
 import time
 from enum import StrEnum
 
-from pydantic import Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
-from web_hacker.data_models.resource_base import ResourceBase
 from web_hacker.data_models.routine.execution import RoutineExecutionContext, RoutineExecutionResult
 from web_hacker.data_models.routine.operation import (
     RoutineFetchOperation,
@@ -47,7 +46,7 @@ class RoutineStatus(StrEnum):
 
 # Routine model ___________________________________________________________________________________
 
-class Routine(ResourceBase):
+class Routine(BaseModel):
     """
     Routine model with comprehensive parameter validation.
 

@@ -58,10 +58,6 @@ def make_routine():
     """
     def factory(operations: list[RoutineOperationUnion], **kwargs: Any) -> Routine:
         defaults = {
-            "id": "Routine_test-00000000-0000-0000-0000-000000000000",
-            "created_at": 1609459200,
-            "updated_at": 1609459200,
-            "metadata": None,
             "name": "test_routine",
             "description": "Test routine",
             "created_by": "test_user",
