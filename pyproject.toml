@@ -43,13 +43,13 @@ dependencies = [
     "websockets>=15.0.1",
     "websocket-client>=1.6.0",
     "beautifulsoup4>=4.14.2",
+    "pylint>=3.0.0",
+    "pytest>=8.3.5",
 ]
 
 [project.optional-dependencies]
 dev = [
     "ipykernel>=6.29.5",
-    "pylint>=3.0.0",
-    "pytest>=8.3.5",
 ]
 
 [project.scripts]
