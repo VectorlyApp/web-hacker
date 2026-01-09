@@ -5,12 +5,12 @@ Routine discovery message data models.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class RoutineDiscoveryMessageType(str, Enum):
+class RoutineDiscoveryMessageType(str, StrEnum):
     """
     Enum for routine discovery message types.
     """
