@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 
 def manual_llm_parse_text_to_model(
     text: str,
-    context: str | list | dict,
+    context: str | None = None,
     pydantic_model: Type[BaseModel],
     client: OpenAI,
     llm_model: str = "gpt-5-nano",
@@ -48,7 +48,7 @@ def manual_llm_parse_text_to_model(
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Context:\n{encode(context)}"},
+        {"role": "user", "content": f"Context:\n{context}"},
         {"role": "user", "content": f"Text to parse: {text}"},
         {"role": "user", "content": f"Target Model Schema (TOON format):\n{encode(pydantic_model.model_json_schema())}"},
         {"role": "user", "content": "Extract the data and return a JSON object that validates against the schema above."}

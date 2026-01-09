@@ -694,7 +694,7 @@ class RoutineDiscoveryAgent(BaseModel):
         # context includes the last 2 messages (user prompt + assistant response) to help with parsing
         production_routine = manual_llm_parse_text_to_model(
             text=response_text,
-            context="\n".join([f"{msg['role']}: {msg['content']}" for msg in self.message_history[-2:]]),
+            context=encode(self.message_history[-2:]),
             pydantic_model=Routine,
             client=self.client,
             llm_model=self.llm_model
