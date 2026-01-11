@@ -7,6 +7,8 @@ Unit tests for benchmarks data models and expression evaluation.
 import pytest
 import re
 
+from unittest.mock import MagicMock, patch
+
 from web_hacker.data_models.benchmarks import (
     ExpressionOperator,
     OPERATOR_SYMBOLS,
@@ -15,6 +17,8 @@ from web_hacker.data_models.benchmarks import (
     SimpleExpression,
     CompositeExpression,
     DeterministicTest,
+    LLMTest,
+    LLMTestResult,
     evaluate_expression,
     stringify_expression,
 )
@@ -650,7 +654,7 @@ class TestDeterministicTest:
                 "value": "John"
             }
         }
-        test = DeterministicTest.from_dict(data)
+        test = DeterministicTest.model_validate(data)
         assert test.name == "check_name"
         assert test.description == "Check that name equals John"
         assert isinstance(test.expression, SimpleExpression)
@@ -668,13 +672,13 @@ class TestDeterministicTest:
                 ]
             }
         }
-        test = DeterministicTest.from_dict(data)
+        test = DeterministicTest.model_validate(data)
         assert test.name == "check_user"
         assert isinstance(test.expression, CompositeExpression)
 
     def test_from_json(self):
         json_str = '{"name": "test", "expression": {"type": "simple", "path": "val", "operator": "equals", "value": 42}}'
-        test = DeterministicTest.from_json(json_str)
+        test = DeterministicTest.model_validate_json(json_str)
         assert test.name == "test"
         assert test.expression.evaluate({"val": 42}) is True
 
@@ -683,7 +687,7 @@ class TestDeterministicTest:
             "name": "test",
             "expression": {"type": "simple", "path": "x", "operator": "exists"}
         }
-        test = DeterministicTest.from_dict(data)
+        test = DeterministicTest.model_validate(data)
         assert test.description == ""
 
 
@@ -1060,3 +1064,280 @@ class TestSerializationRoundtrip:
         # Verify evaluation works
         data = {"a": 1, "b": 2, "c": 3, "d": "exists"}
         assert original.expression.evaluate(data) == restored.expression.evaluate(data)
+
+
+class TestLLMTestResult:
+    """Test cases for LLMTestResult model."""
+
+    def test_passed_with_threshold_above(self):
+        result = LLMTestResult(score=0.8, rationale="Good quality")
+        assert result.passed(0.7) is True
+
+    def test_passed_with_threshold_equal(self):
+        result = LLMTestResult(score=0.7, rationale="Meets threshold")
+        assert result.passed(0.7) is True
+
+    def test_passed_with_threshold_below(self):
+        result = LLMTestResult(score=0.5, rationale="Below threshold")
+        assert result.passed(0.7) is False
+
+    def test_passed_with_none_threshold(self):
+        result = LLMTestResult(score=0.8, rationale="No threshold")
+        assert result.passed(None) is None
+
+    def test_default_values(self):
+        result = LLMTestResult(score=0.5)
+        assert result.rationale is None
+        assert result.confidence is None
+
+    def test_all_fields(self):
+        result = LLMTestResult(
+            score=0.85,
+            rationale="The response was comprehensive",
+            confidence=0.9
+        )
+        assert result.score == 0.85
+        assert result.rationale == "The response was comprehensive"
+        assert result.confidence == 0.9
+
+    def test_serialization_roundtrip(self):
+        original = LLMTestResult(score=0.75, rationale="Test", confidence=0.8)
+        json_str = original.model_dump_json()
+        restored = LLMTestResult.model_validate_json(json_str)
+        assert restored.score == original.score
+        assert restored.rationale == original.rationale
+        assert restored.confidence == original.confidence
+
+
+class TestLLMTest:
+    """Test cases for LLMTest model."""
+
+    def test_default_values(self):
+        test = LLMTest(
+            name="test",
+            prompt="Evaluate this",
+            model="gpt-4.1"
+        )
+        assert test.description == ""
+        assert test.n_trials == 3
+        assert test.score_range == (0.0, 1.0)
+        assert test.passing_threshold is None
+        assert test.aggregation == "mean"
+
+    def test_all_fields(self):
+        test = LLMTest(
+            name="quality_check",
+            description="Check response quality",
+            prompt="Rate the quality of this response",
+            model="gpt-4.1",
+            n_trials=5,
+            score_range=(1.0, 10.0),
+            passing_threshold=7.0,
+            aggregation="median"
+        )
+        assert test.name == "quality_check"
+        assert test.description == "Check response quality"
+        assert test.n_trials == 5
+        assert test.score_range == (1.0, 10.0)
+        assert test.passing_threshold == 7.0
+        assert test.aggregation == "median"
+
+    def test_serialization_roundtrip(self):
+        original = LLMTest(
+            name="test",
+            prompt="Evaluate",
+            model="gpt-4.1",
+            n_trials=2,
+            aggregation="max"
+        )
+        json_str = original.model_dump_json()
+        restored = LLMTest.model_validate_json(json_str)
+        assert restored.name == original.name
+        assert restored.n_trials == original.n_trials
+        assert restored.aggregation == original.aggregation
+
+    def test_run_with_mean_aggregation(self):
+        """Test run method with mean aggregation using mocked OpenAI client."""
+        test = LLMTest(
+            name="test",
+            prompt="Evaluate the data",
+            model="gpt-4.1",
+            n_trials=3,
+            aggregation="mean"
+        )
+
+        # Create mock client and responses
+        mock_client = MagicMock()
+        mock_responses = [
+            MagicMock(output_parsed=LLMTestResult(score=0.7, rationale="Good", confidence=0.8)),
+            MagicMock(output_parsed=LLMTestResult(score=0.8, rationale="Very good", confidence=0.9)),
+            MagicMock(output_parsed=LLMTestResult(score=0.9, rationale="Excellent", confidence=0.85)),
+        ]
+        mock_client.responses.parse.side_effect = mock_responses
+
+        result = test.run(data={"key": "value"}, client=mock_client)
+
+        assert mock_client.responses.parse.call_count == 3
+        assert result.score == pytest.approx(0.8, rel=1e-6)  # mean of 0.7, 0.8, 0.9
+        assert result.rationale == "Very good"  # closest to mean
+        assert result.confidence == pytest.approx(0.85, rel=1e-6)  # mean of confidences
+
+    def test_run_with_median_aggregation(self):
+        """Test run method with median aggregation."""
+        test = LLMTest(
+            name="test",
+            prompt="Evaluate",
+            model="gpt-4.1",
+            n_trials=3,
+            aggregation="median"
+        )
+
+        mock_client = MagicMock()
+        mock_responses = [
+            MagicMock(output_parsed=LLMTestResult(score=0.5, rationale="Low")),
+            MagicMock(output_parsed=LLMTestResult(score=0.9, rationale="High")),
+            MagicMock(output_parsed=LLMTestResult(score=0.7, rationale="Medium")),
+        ]
+        mock_client.responses.parse.side_effect = mock_responses
+
+        result = test.run(data="test data", client=mock_client)
+
+        assert result.score == 0.7  # median of 0.5, 0.7, 0.9
+        assert result.rationale == "Medium"  # exactly at median
+
+    def test_run_with_min_aggregation(self):
+        """Test run method with min aggregation."""
+        test = LLMTest(
+            name="test",
+            prompt="Evaluate",
+            model="gpt-4.1",
+            n_trials=3,
+            aggregation="min"
+        )
+
+        mock_client = MagicMock()
+        mock_responses = [
+            MagicMock(output_parsed=LLMTestResult(score=0.6, rationale="Lowest")),
+            MagicMock(output_parsed=LLMTestResult(score=0.8, rationale="Middle")),
+            MagicMock(output_parsed=LLMTestResult(score=0.9, rationale="Highest")),
+        ]
+        mock_client.responses.parse.side_effect = mock_responses
+
+        result = test.run(data="test", client=mock_client)
+
+        assert result.score == 0.6
+        assert result.rationale == "Lowest"
+
+    def test_run_with_max_aggregation(self):
+        """Test run method with max aggregation."""
+        test = LLMTest(
+            name="test",
+            prompt="Evaluate",
+            model="gpt-4.1",
+            n_trials=3,
+            aggregation="max"
+        )
+
+        mock_client = MagicMock()
+        mock_responses = [
+            MagicMock(output_parsed=LLMTestResult(score=0.6, rationale="Lowest")),
+            MagicMock(output_parsed=LLMTestResult(score=0.8, rationale="Middle")),
+            MagicMock(output_parsed=LLMTestResult(score=0.95, rationale="Highest")),
+        ]
+        mock_client.responses.parse.side_effect = mock_responses
+
+        result = test.run(data="test", client=mock_client)
+
+        assert result.score == 0.95
+        assert result.rationale == "Highest"
+
+    def test_run_single_trial(self):
+        """Test run method with single trial."""
+        test = LLMTest(
+            name="test",
+            prompt="Evaluate",
+            model="gpt-4.1",
+            n_trials=1
+        )
+
+        mock_client = MagicMock()
+        mock_client.responses.parse.return_value = MagicMock(
+            output_parsed=LLMTestResult(score=0.75, rationale="Single trial", confidence=0.9)
+        )
+
+        result = test.run(data="test", client=mock_client)
+
+        assert mock_client.responses.parse.call_count == 1
+        assert result.score == 0.75
+        assert result.rationale == "Single trial"
+        assert result.confidence == 0.9
+
+    def test_run_without_confidence(self):
+        """Test run method when no confidence is provided."""
+        test = LLMTest(
+            name="test",
+            prompt="Evaluate",
+            model="gpt-4.1",
+            n_trials=2
+        )
+
+        mock_client = MagicMock()
+        mock_responses = [
+            MagicMock(output_parsed=LLMTestResult(score=0.6, rationale="No confidence")),
+            MagicMock(output_parsed=LLMTestResult(score=0.8, rationale="Also no confidence")),
+        ]
+        mock_client.responses.parse.side_effect = mock_responses
+
+        result = test.run(data="test", client=mock_client)
+
+        assert result.confidence is None
+
+    def test_run_prompt_includes_data_and_score_range(self):
+        """Test that the prompt sent to the LLM includes data and score range."""
+        test = LLMTest(
+            name="test",
+            prompt="Rate the quality",
+            model="gpt-4.1",
+            n_trials=1,
+            score_range=(1.0, 5.0)
+        )
+
+        mock_client = MagicMock()
+        mock_client.responses.parse.return_value = MagicMock(
+            output_parsed=LLMTestResult(score=3.5, rationale="Average")
+        )
+
+        test.run(data="my test data", client=mock_client)
+
+        # Verify the call was made with correct arguments
+        call_args = mock_client.responses.parse.call_args
+        assert call_args.kwargs["model"] == "gpt-4.1"
+
+        input_messages = call_args.kwargs["input"]
+        assert len(input_messages) == 1
+        assert input_messages[0]["role"] == "user"
+
+        content = input_messages[0]["content"]
+        assert "Rate the quality" in content
+        assert "my test data" in content
+        assert "1.0" in content
+        assert "5.0" in content
+
+    def test_run_uses_correct_text_format(self):
+        """Test that run uses LLMTestResult as text_format."""
+        test = LLMTest(
+            name="test",
+            prompt="Evaluate",
+            model="gpt-4.1",
+            n_trials=1
+        )
+
+        mock_client = MagicMock()
+        mock_client.responses.parse.return_value = MagicMock(
+            output_parsed=LLMTestResult(score=0.5)
+        )
+
+        test.run(data="test", client=mock_client)
+
+        call_args = mock_client.responses.parse.call_args
+        assert call_args.kwargs["text_format"] == LLMTestResult

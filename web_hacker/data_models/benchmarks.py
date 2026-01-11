@@ -4,10 +4,14 @@ web_hacker/data_models/benchmarks.py
 Data models for routine evaluation and benchmarking.
 """
 
+import statistics
 from enum import StrEnum
 from typing import Annotated, Any, Literal, Union
 
+from openai import OpenAI
 from pydantic import BaseModel, Field
+
+from web_hacker.data_models.routine.routine import Routine
 
 
 class ExpressionOperator(StrEnum):
@@ -401,11 +405,11 @@ CompositeExpression.model_rebuild()
 class DeterministicTest(BaseModel):
     """
     A deterministic test with a root expression that must pass.
-    
+
     The expression can be:
     - A simple expression (type: "simple", path + operator + value)
     - A composite expression (type: "composite", logic + expressions)
-    
+
     Example JSON:
         {
             "name": "user_is_adult_and_verified",
@@ -420,26 +424,220 @@ class DeterministicTest(BaseModel):
             }
         }
     """
-    
+
     name: str = Field(
         description="Name of the test"
     )
-    
+
     description: str = Field(
         default="",
         description="Description of what this test validates"
     )
-    
+
     expression: SimpleExpression | CompositeExpression = Field(
         description="The expression to evaluate. Can be simple or composite (with AND/OR logic)."
     )
+
+    result: bool | None = Field(
+        default=None,
+        description="Result of the test after running. True if passed, False if failed, None if not run."
+    )
+
+    def run(self, data: Any) -> bool:
+        """
+        Run the deterministic test against the provided data.
+
+        Args:
+            data: The data object to evaluate against
+
+        Returns:
+            bool: True if the test passed, False otherwise
+        """
+        self.result = evaluate_expression(self.expression, data)
+        return self.result
+
+
+class LLMTestResult(BaseModel):
+    """
+    Result of running an LLMTest.
+    """
+
+    score: float = Field(
+        description="Normalized score produced by the LLM"
+    )
+
+    rationale: str | None = Field(
+        default=None,
+        description="LLM explanation for the score"
+    )
+
+    confidence: float | None = Field(
+        default=None,
+        description="Optional confidence estimate (0.0–1.0)"
+    )
+
+    def passed(self, threshold: float | None) -> bool | None:
+        if threshold is None:
+            return None
+        return self.score >= threshold
+
+
+class LLMTest(BaseModel):
+    """
+    A non-deterministic test evaluated by an LLM.
+
+    The LLM inspects some data and answers a question or produces a score.
+    """
+
+    name: str = Field(
+        description="Name of the test"
+    )
+
+    description: str = Field(
+        default="",
+        description="What this test evaluates"
+    )
+
+    prompt: str = Field(
+        description=(
+            "The evaluation prompt given to the LLM. "
+            "May reference the data under test."
+        )
+    )
+
+    model: str = Field(
+        description="LLM model identifier used for evaluation (e.g. gpt-4.1, claude-3.5-sonnet)"
+    )
+
+    n_trials: int = Field(
+        default=3,
+        ge=1,
+        description="Number of independent LLM evaluations to run"
+    )
+
+    score_range: tuple[float, float] = Field(
+        default=(0.0, 1.0),
+        description="Minimum and maximum possible score"
+    )
+
+    passing_threshold: float | None = Field(
+        default=None,
+        description=(
+            "Optional threshold above which the test is considered passing. "
+            "If None, the test does not produce pass/fail directly."
+        )
+    )
+
+    aggregation: Literal["mean", "median", "min", "max"] = Field(
+        default="mean",
+        description="How to aggregate scores across trials"
+    )
+
+    results: list[LLMTestResult] = Field(
+        default_factory=list,
+        description="Results from running this test. Populated after run() is called."
+    )
+
+    def run(self, data: Any, client: OpenAI) -> LLMTestResult:
+        """
+        Run the LLM test against the provided data.
+
+        Args:
+            data: The data to evaluate
+            client: OpenAI client instance
+
+        Returns:
+            LLMTestResult: Aggregated result from n_trials evaluations
+        """
+        full_prompt = (
+            f"{self.prompt}\n\n"
+            f"Data to evaluate:\n{data}\n\n"
+            f"Provide a score between {self.score_range[0]} and {self.score_range[1]}."
+        )
+
+        # Run n_trials evaluations
+        trial_results: list[LLMTestResult] = []
+        for _ in range(self.n_trials):
+            response = client.responses.parse(
+                model=self.model,
+                input=[{"role": "user", "content": full_prompt}],
+                text_format=LLMTestResult
+            )
+            trial_results.append(response.output_parsed)
+
+        # Aggregate scores
+        scores = [r.score for r in trial_results]
+        if self.aggregation == "mean":
+            final_score = statistics.mean(scores)
+        elif self.aggregation == "median":
+            final_score = statistics.median(scores)
+        elif self.aggregation == "min":
+            final_score = min(scores)
+        else:  # max
+            final_score = max(scores)
+
+        # Aggregate confidence if present
+        confidences = [r.confidence for r in trial_results if r.confidence is not None]
+        final_confidence = statistics.mean(confidences) if confidences else None
+
+        # Use rationale from the result closest to the aggregated score
+        closest_result = min(trial_results, key=lambda r: abs(r.score - final_score))
+
+        aggregated_result = LLMTestResult(
+            score=final_score,
+            rationale=closest_result.rationale,
+            confidence=final_confidence
+        )
+        self.results.append(aggregated_result)
+        return aggregated_result
+
+
+class RoutineDiscoveryEvaluation(BaseModel):
+    """
+    A test case for evaluating routine discovery.
+
+    Contains the task description, expected ground truth routine,
+    model to use for discovery, and tests to validate the discovered routine.
+    """
     
-    @classmethod
-    def from_dict(cls, data: dict) -> "DeterministicTest":
-        """Create a DeterministicTest from a dictionary."""
-        return cls.model_validate(data)
-    
-    @classmethod
-    def from_json(cls, json_str: str) -> "DeterministicTest":
-        """Create a DeterministicTest from a JSON string."""
-        return cls.model_validate_json(json_str)
+    name: str = Field(
+        description="The name of the evaluation"
+    )
+
+    description: str = Field(
+        default="",
+        description="The description of the evaluation"
+    )
+
+    task: str = Field(
+        description="The task description given to the routine discovery agent"
+    )
+
+    ground_truth_routine: Routine = Field(
+        description="The expected routine that should be discovered"
+    )
+
+    llm_model: str = Field(
+        description="The LLM model identifier to use for routine discovery (e.g. gpt-4.1, claude-3.5-sonnet)"
+    )
+
+    deterministic_tests: list[DeterministicTest] = Field(
+        default_factory=list,
+        description="List of deterministic tests to run against the discovered routine"
+    )
+
+    llm_tests: list[LLMTest] = Field(
+        default_factory=list,
+        description="List of LLM-based tests to run against the discovered routine"
+    )
+
+    # Results populated after running the evaluation
+    generated_routine: Routine | None = Field(
+        default=None,
+        description="The routine generated by the discovery agent. Populated after running."
+    )
+
+    discovery_duration: float | None = Field(
+        default=None,
+        description="Time taken to discover the routine in seconds. Populated after running."
+    )
