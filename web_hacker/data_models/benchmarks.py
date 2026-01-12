@@ -8,8 +8,10 @@ import statistics
 from enum import StrEnum
 from typing import Annotated, Any, Literal, Union
 
+import jmespath
+from jmespath.exceptions import JMESPathError
 from openai import OpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from web_hacker.data_models.routine.routine import Routine
 
@@ -51,6 +53,17 @@ class ExpressionOperator(StrEnum):
     # Existence (for checking if path exists)
     EXISTS = "exists"
     NOT_EXISTS = "not_exists"
+
+
+# Unary operators that only need value_1 (no value_2)
+UNARY_OPERATORS: set[ExpressionOperator] = {
+    ExpressionOperator.IS_NULL,
+    ExpressionOperator.IS_NOT_NULL,
+    ExpressionOperator.IS_EMPTY,
+    ExpressionOperator.IS_NOT_EMPTY,
+    ExpressionOperator.EXISTS,
+    ExpressionOperator.NOT_EXISTS,
+}
 
 
 # Operator display symbols for pretty printing
@@ -96,120 +109,238 @@ def _format_value(value: Any) -> str:
 
 def _get_value_at_path(data: Any, path: str) -> tuple[bool, Any]:
     """
-    Get value at a dot-notation path from data.
-    
-    Uses dot notation everywhere:
+    Get value at a JMESPath expression from data.
+
+    Uses JMESPath syntax:
         - Object keys: "user.name"
-        - Array indices: "items.0.name" (not items[0])
-        - Nested paths: "data.users.0.profile.email"
-    
+        - Array indices: "items[0].name", "items[-1]" (last element)
+        - Wildcards: "users[*].name" (all names)
+        - Filters: "users[?type == 'admin']" (filter by condition)
+        - Pipes: "users[?active] | [0]" (first active user)
+
+    See https://jmespath.org/ for full syntax.
+
     Returns:
-        tuple[bool, Any]: (exists, value) - exists is False if path doesn't exist
+        tuple[bool, Any]: (exists, value) - exists is False if path doesn't exist or returns None
     """
     if not path:
         return True, data
-    
-    current = data
+
+    try:
+        result = jmespath.search(path, data)
+        # JMESPath returns None for non-existent paths
+        # We treat None as "exists but is None" only if the path is valid
+        # and the actual value is None. Otherwise, it means path doesn't exist.
+        if result is None:
+            # Check if the path genuinely has a None value vs doesn't exist
+            # by checking if parent exists and has the key
+            return _check_path_exists(data, path), None
+        return True, result
+    except JMESPathError:
+        return False, None
+
+
+def _check_path_exists(data: Any, path: str) -> bool:
+    """
+    Check if a JMESPath actually exists (vs returning None because path is invalid).
+
+    This is needed because JMESPath returns None for both:
+    - Path exists but value is None
+    - Path doesn't exist
+    """
+    # For simple paths without filters/wildcards, we can check existence
+    # For complex paths, assume None means doesn't exist
+    if not path or any(c in path for c in '[]*|?@&!'):
+        # Complex JMESPath - if result is None, treat as non-existent
+        # unless the entire data is None
+        return data is None and path == ''
+
+    # Simple dot-notation path - traverse manually to check existence
     parts = path.split('.')
-    
+    current = data
+
     for part in parts:
         if current is None:
-            return False, None
-        
-        # Check if part is a numeric index
-        if part.isdigit():
-            index = int(part)
-            if isinstance(current, (list, tuple)) and 0 <= index < len(current):
-                current = current[index]
-            else:
-                return False, None
+            return False
+        if isinstance(current, dict):
+            if part not in current:
+                return False
+            current = current[part]
+        elif hasattr(current, part):
+            current = getattr(current, part)
         else:
-            # Regular key access
-            if isinstance(current, dict) and part in current:
-                current = current[part]
-            elif hasattr(current, part):
-                current = getattr(current, part)
-            else:
-                return False, None
-    
-    return True, current
+            return False
+
+    return True
+
+
+class PathReference(BaseModel):
+    """
+    A reference to another path in the data, used for comparing two paths.
+
+    When used as the `value` in a SimpleExpression, the expression will compare
+    the value at `path` with the value at `PathReference.path`.
+
+    Examples:
+        Compare session storage of last fetch vs return operation:
+        {
+            "path": "steps[?type == 'fetch'] | [-1].session_storage",
+            "operator": "equals",
+            "value": {"type": "path", "path": "steps[?type == 'return'] | [-1].session_storage"}
+        }
+    """
+
+    type: Literal["path"] = Field(
+        default="path",
+        description="Discriminator to identify this as a path reference"
+    )
+
+    path: str = Field(
+        description="JMESPath expression to get the comparison value from the data"
+    )
+
+
+def _resolve_value(value: Any, data: Any) -> tuple[bool, Any]:
+    """
+    Resolve a value, which may be a literal or a PathReference.
+
+    Args:
+        value: The value to resolve (literal or PathReference)
+        data: The data to resolve path references against
+
+    Returns:
+        tuple[bool, Any]: (success, resolved_value)
+            - For literals: (True, value)
+            - For PathReference: result of _get_value_at_path
+    """
+    if isinstance(value, PathReference):
+        return _get_value_at_path(data, value.path)
+    if isinstance(value, dict) and value.get("type") == "path" and "path" in value:
+        # Handle dict representation of PathReference (from JSON)
+        return _get_value_at_path(data, value["path"])
+    return True, value
 
 
 class SimpleExpression(BaseModel):
     """
-    A simple expression that evaluates a condition against data at a given path.
-    
+    A simple expression that evaluates a condition using two values and an operator.
+
+    Both value_1 and value_2 can be:
+    - A literal value (str, int, float, bool, list, dict, None)
+    - A PathReference to extract a value from the data: {"type": "path", "path": "..."}
+
     Examples:
-        {"type": "simple", "path": "user.name", "operator": "equals", "value": "John"}
-        {"type": "simple", "path": "items.0.name", "operator": "equals", "value": "Apple"}
-        {"type": "simple", "path": "count", "operator": "greater_than", "value": 10}
+        Path vs literal:
+        {"type": "simple", "value_1": {"type": "path", "path": "steps[0].type"}, "operator": "equals", "value_2": "navigate"}
+
+        Path vs path:
+        {"type": "simple",
+         "value_1": {"type": "path", "path": "steps[?type == 'fetch'] | [-1].session"},
+         "operator": "equals",
+         "value_2": {"type": "path", "path": "steps[?type == 'return'] | [-1].session"}}
+
+        Unary operators (value_2 not needed):
+        {"type": "simple", "value_1": {"type": "path", "path": "user.name"}, "operator": "exists"}
     """
-    
+
     type: Literal["simple"] = Field(
         default="simple",
         description="Expression type discriminator"
     )
-    
-    path: str = Field(
-        description="Dot notation path to the data (e.g., 'user.name', 'items.0.id', 'data.results')"
+
+    value_1: Any = Field(
+        description="First operand. Can be a literal or PathReference {'type': 'path', 'path': '...'}"
     )
-    
+
     operator: ExpressionOperator = Field(
         description="The operator to use for comparison"
     )
-    
-    value: Any = Field(
+
+    value_2: Any = Field(
         default=None,
-        description="The expected value to compare against. Can be any type: str, int, float, bool, list, dict, None"
+        description="Second operand. Can be a literal or PathReference. Not needed for unary operators (exists, is_null, etc.)"
     )
-    
+
+    @model_validator(mode="after")
+    def convert_path_dicts_to_path_reference(self) -> "SimpleExpression":
+        """Convert dict-format PathReferences to PathReference objects."""
+        if isinstance(self.value_1, dict) and self.value_1.get("type") == "path" and "path" in self.value_1:
+            object.__setattr__(self, 'value_1', PathReference(path=self.value_1["path"]))
+        if isinstance(self.value_2, dict) and self.value_2.get("type") == "path" and "path" in self.value_2:
+            object.__setattr__(self, 'value_2', PathReference(path=self.value_2["path"]))
+        return self
+
     def stringify(self) -> str:
         """Convert expression to human-readable string."""
         op_symbol = OPERATOR_SYMBOLS.get(self.operator.value, self.operator.value)
-        
-        # Operators that don't need a value
-        if self.operator in (
-            ExpressionOperator.IS_NULL,
-            ExpressionOperator.IS_NOT_NULL,
-            ExpressionOperator.IS_EMPTY,
-            ExpressionOperator.IS_NOT_EMPTY,
-            ExpressionOperator.EXISTS,
-            ExpressionOperator.NOT_EXISTS,
-        ):
-            return f"{self.path} {op_symbol}"
-        
-        return f"{self.path} {op_symbol} {_format_value(self.value)}"
+
+        def format_operand(val: Any) -> str:
+            """Format an operand which may be a literal or PathReference."""
+            if isinstance(val, PathReference):
+                return f"${{{val.path}}}"
+            if isinstance(val, dict) and val.get("type") == "path" and "path" in val:
+                return f"${{{val['path']}}}"
+            return _format_value(val)
+
+        v1_str = format_operand(self.value_1)
+
+        # Unary operators don't need a second value
+        if self.operator in UNARY_OPERATORS:
+            return f"{v1_str} {op_symbol}"
+
+        v2_str = format_operand(self.value_2)
+        return f"{v1_str} {op_symbol} {v2_str}"
     
     def evaluate(self, data: Any) -> bool:
         """
         Evaluate this expression against the given data.
-        
+
         Args:
             data: The data object to evaluate against (dict, object, etc.)
-            
+
         Returns:
             bool: True if the expression passes, False otherwise
         """
         import re
-        
-        exists, actual = _get_value_at_path(data, self.path)
-        
-        # Handle existence operators first
+
+        # Resolve value_1 (may be literal or PathReference)
+        v1_exists, v1 = _resolve_value(self.value_1, data)
+
+        # Handle existence operators first (only need value_1)
         if self.operator == ExpressionOperator.EXISTS:
-            return exists
+            return v1_exists
         if self.operator == ExpressionOperator.NOT_EXISTS:
-            return not exists
-        
-        # For all other operators, path must exist
-        if not exists:
+            return not v1_exists
+
+        # For all other operators, value_1 must exist/resolve
+        if not v1_exists:
             return False
-        
-        # Null checks
+
+        # Null checks (unary - only need value_1)
         if self.operator == ExpressionOperator.IS_NULL:
-            return actual is None
+            return v1 is None
         if self.operator == ExpressionOperator.IS_NOT_NULL:
-            return actual is not None
-        
+            return v1 is not None
+
+        # Empty checks (unary - only need value_1)
+        if self.operator == ExpressionOperator.IS_EMPTY:
+            if v1 is None:
+                return True
+            if isinstance(v1, (str, list, dict, tuple)):
+                return len(v1) == 0
+            return False
+        if self.operator == ExpressionOperator.IS_NOT_EMPTY:
+            if v1 is None:
+                return False
+            if isinstance(v1, (str, list, dict, tuple)):
+                return len(v1) > 0
+            return True
+
+        # Resolve value_2 for binary operators
+        v2_exists, v2 = _resolve_value(self.value_2, data)
+        if not v2_exists:
+            return False
+
         # Type check
         if self.operator == ExpressionOperator.IS_TYPE:
             type_map = {
@@ -221,99 +352,85 @@ class SimpleExpression(BaseModel):
                 "dict": dict, "object": dict,
                 "none": type(None), "null": type(None),
             }
-            expected_type = type_map.get(str(self.value).lower())
+            expected_type = type_map.get(str(v2).lower())
             if expected_type:
-                return isinstance(actual, expected_type)
+                return isinstance(v1, expected_type)
             return False
-        
-        # Empty checks
-        if self.operator == ExpressionOperator.IS_EMPTY:
-            if actual is None:
-                return True
-            if isinstance(actual, (str, list, dict, tuple)):
-                return len(actual) == 0
-            return False
-        if self.operator == ExpressionOperator.IS_NOT_EMPTY:
-            if actual is None:
-                return False
-            if isinstance(actual, (str, list, dict, tuple)):
-                return len(actual) > 0
-            return True
-        
+
         # Equality
         if self.operator == ExpressionOperator.EQUALS:
-            return actual == self.value
+            return v1 == v2
         if self.operator == ExpressionOperator.NOT_EQUALS:
-            return actual != self.value
-        
+            return v1 != v2
+
         # Containment
         if self.operator == ExpressionOperator.CONTAINS:
-            if isinstance(actual, str) and isinstance(self.value, str):
-                return self.value in actual
-            if isinstance(actual, (list, tuple)):
-                return self.value in actual
-            if isinstance(actual, dict):
-                return self.value in actual
+            if isinstance(v1, str) and isinstance(v2, str):
+                return v2 in v1
+            if isinstance(v1, (list, tuple)):
+                return v2 in v1
+            if isinstance(v1, dict):
+                return v2 in v1
             return False
         if self.operator == ExpressionOperator.NOT_CONTAINS:
-            if isinstance(actual, str) and isinstance(self.value, str):
-                return self.value not in actual
-            if isinstance(actual, (list, tuple)):
-                return self.value not in actual
-            if isinstance(actual, dict):
-                return self.value not in actual
+            if isinstance(v1, str) and isinstance(v2, str):
+                return v2 not in v1
+            if isinstance(v1, (list, tuple)):
+                return v2 not in v1
+            if isinstance(v1, dict):
+                return v2 not in v1
             return True
-        
+
         # Comparison (numbers)
         if self.operator == ExpressionOperator.GREATER_THAN:
             try:
-                return float(actual) > float(self.value)
+                return float(v1) > float(v2)
             except (TypeError, ValueError):
                 return False
         if self.operator == ExpressionOperator.GREATER_THAN_OR_EQUAL:
             try:
-                return float(actual) >= float(self.value)
+                return float(v1) >= float(v2)
             except (TypeError, ValueError):
                 return False
         if self.operator == ExpressionOperator.LESS_THAN:
             try:
-                return float(actual) < float(self.value)
+                return float(v1) < float(v2)
             except (TypeError, ValueError):
                 return False
         if self.operator == ExpressionOperator.LESS_THAN_OR_EQUAL:
             try:
-                return float(actual) <= float(self.value)
+                return float(v1) <= float(v2)
             except (TypeError, ValueError):
                 return False
-        
+
         # String operations
         if self.operator == ExpressionOperator.STARTS_WITH:
-            if isinstance(actual, str) and isinstance(self.value, str):
-                return actual.startswith(self.value)
+            if isinstance(v1, str) and isinstance(v2, str):
+                return v1.startswith(v2)
             return False
         if self.operator == ExpressionOperator.ENDS_WITH:
-            if isinstance(actual, str) and isinstance(self.value, str):
-                return actual.endswith(self.value)
+            if isinstance(v1, str) and isinstance(v2, str):
+                return v1.endswith(v2)
             return False
         if self.operator == ExpressionOperator.MATCHES_REGEX:
-            if isinstance(actual, str) and isinstance(self.value, str):
-                return bool(re.search(self.value, actual))
+            if isinstance(v1, str) and isinstance(v2, str):
+                return bool(re.search(v2, v1))
             return False
-        
+
         # Length operations
         if self.operator == ExpressionOperator.LENGTH_EQUALS:
-            if hasattr(actual, '__len__'):
-                return len(actual) == self.value
+            if hasattr(v1, '__len__'):
+                return len(v1) == v2
             return False
         if self.operator == ExpressionOperator.LENGTH_GREATER_THAN:
-            if hasattr(actual, '__len__'):
-                return len(actual) > self.value
+            if hasattr(v1, '__len__'):
+                return len(v1) > v2
             return False
         if self.operator == ExpressionOperator.LENGTH_LESS_THAN:
-            if hasattr(actual, '__len__'):
-                return len(actual) < self.value
+            if hasattr(v1, '__len__'):
+                return len(v1) < v2
             return False
-        
+
         return False
 
 
@@ -615,10 +732,6 @@ class RoutineDiscoveryEvaluation(BaseModel):
 
     ground_truth_routine: Routine = Field(
         description="The expected routine that should be discovered"
-    )
-
-    llm_model: str = Field(
-        description="The LLM model identifier to use for routine discovery (e.g. gpt-4.1, claude-3.5-sonnet)"
     )
 
     deterministic_tests: list[DeterministicTest] = Field(

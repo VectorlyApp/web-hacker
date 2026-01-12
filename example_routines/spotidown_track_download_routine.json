@@ -1,0 +1,99 @@
+{
+    "name": "Spotidown Track Download",
+    "description": "Download Spotify track from spotidown.app. Step 1: POST to /action to get track metadata. Step 2: POST to /action/track to get download links.",
+    "operations": [
+        {
+            "type": "navigate",
+            "url": "https://spotidown.app/en1",
+            "sleep_after_navigation_seconds": 6.0
+        },
+        {
+            "type": "js_evaluate",
+            "js": "(function() {\n  var inputs = document.querySelectorAll('input[type=\"hidden\"]');\n  for (var i = 0; i < inputs.length; i++) {\n    var inp = inputs[i];\n    if (inp.name && inp.name.startsWith('_') && inp.value && inp.value.length === 32) {\n      return inp.name;\n    }\n  }\n  return null;\n})()",
+            "session_storage_key": "token_name",
+            "timeout_seconds": 5
+        },
+        {
+            "type": "js_evaluate",
+            "js": "(function() {\n  var inputs = document.querySelectorAll('input[type=\"hidden\"]');\n  for (var i = 0; i < inputs.length; i++) {\n    var inp = inputs[i];\n    if (inp.name && inp.name.startsWith('_') && inp.value && inp.value.length === 32) {\n      return inp.value;\n    }\n  }\n  return null;\n})()",
+            "session_storage_key": "token_value",
+            "timeout_seconds": 5
+        },
+        {
+            "type": "js_evaluate",
+            "js": "(function() {\n  return new Promise(function(resolve) {\n    grecaptcha.ready(function() {\n      var iframe = document.querySelector('iframe[src*=\"recaptcha\"]');\n      var siteKey = iframe ? new URL(iframe.src).searchParams.get('k') : null;\n      grecaptcha.execute(siteKey, {action: 'submit'}).then(function(token) {\n        resolve(token);\n      });\n    });\n  });\n})()",
+            "session_storage_key": "recaptcha_token",
+            "timeout_seconds": 10
+        },
+        {
+            "type": "fetch",
+            "endpoint": {
+                "url": "https://spotidown.app/action",
+                "method": "POST",
+                "headers": {
+                    "Accept": "*/*",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Origin": "https://spotidown.app",
+                    "Referer": "https://spotidown.app/en1"
+                },
+                "body": {
+                    "url": "\"{{spotify_url}}\"",
+                    "g-recaptcha-response": "\"{{sessionStorage:recaptcha_token}}\"",
+                    "\"{{sessionStorage:token_name}}\"": "\"{{sessionStorage:token_value}}\""
+                },
+                "credentials": "include"
+            },
+            "session_storage_key": "action_result"
+        },
+        {
+            "type": "js_evaluate",
+            "js": "(function() {\n  var raw = sessionStorage.getItem('action_result');\n  if (!raw) return {error: 'no_action_result'};\n  var parsed = raw;\n  try { parsed = JSON.parse(parsed); } catch(e) {}\n  try { parsed = JSON.parse(parsed); } catch(e) {}\n  var html = (typeof parsed === 'object' && parsed.data) ? parsed.data : (typeof parsed === 'string' ? parsed : null);\n  if (!html) return {error: 'no_html_found'};\n  var parser = new DOMParser();\n  var doc = parser.parseFromString(html, 'text/html');\n  var form = doc.querySelector('form[name=\"submitspurl\"]');\n  if (!form) return {error: 'no_form_found'};\n  var dataInput = form.querySelector('input[name=\"data\"]');\n  var baseInput = form.querySelector('input[name=\"base\"]');\n  var tokenInput = form.querySelector('input[name=\"token\"]');\n  return {\n    data: dataInput ? dataInput.value : null,\n    base: baseInput ? baseInput.value : null,\n    token: tokenInput ? tokenInput.value : null\n  };\n})()",
+            "session_storage_key": "track_form_data",
+            "timeout_seconds": 5
+        },
+        {
+            "type": "fetch",
+            "endpoint": {
+                "url": "https://spotidown.app/action/track",
+                "method": "POST",
+                "headers": {
+                    "Accept": "*/*",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Origin": "https://spotidown.app",
+                    "Referer": "https://spotidown.app/en1"
+                },
+                "body": {
+                    "data": "\"{{sessionStorage:track_form_data.data}}\"",
+                    "base": "\"{{sessionStorage:track_form_data.base}}\"",
+                    "token": "\"{{sessionStorage:track_form_data.token}}\""
+                },
+                "credentials": "include"
+            },
+            "session_storage_key": "download_result"
+        },
+        {
+            "type": "js_evaluate",
+            "js": "(function() {\n  var raw = sessionStorage.getItem('download_result');\n  if (!raw) return {error: 'no_download_result'};\n  var parsed = raw;\n  try { parsed = JSON.parse(parsed); } catch(e) {}\n  try { parsed = JSON.parse(parsed); } catch(e) {}\n  var html = (typeof parsed === 'object' && parsed.data) ? parsed.data : (typeof parsed === 'string' ? parsed : null);\n  if (!html) return {error: 'no_html_found'};\n  var parser = new DOMParser();\n  var doc = parser.parseFromString(html, 'text/html');\n  var links = doc.querySelectorAll('a');\n  var result = { mp3_url: null, cover_url: null, title: null, artist: null };\n  var titleEl = doc.querySelector('h3[itemprop=\"name\"] div');\n  var artistEl = doc.querySelector('.spotidown-downloader-middle p span');\n  if (titleEl) result.title = titleEl.textContent.trim();\n  if (artistEl) result.artist = artistEl.textContent.trim();\n  for (var i = 0; i < links.length; i++) {\n    var text = links[i].textContent;\n    if (text.indexOf('Download Mp3') !== -1) {\n      result.mp3_url = links[i].getAttribute('href');\n    } else if (text.indexOf('Download Cover') !== -1) {\n      result.cover_url = links[i].getAttribute('href');\n    }\n  }\n  return result;\n})()",
+            "session_storage_key": "final_result",
+            "timeout_seconds": 10
+        },
+        {
+            "type": "return",
+            "session_storage_key": "final_result"
+        }
+    ],
+    "incognito": false,
+    "parameters": [
+        {
+            "name": "spotify_url",
+            "description": "The full Spotify track URL (e.g., https://open.spotify.com/track/...)",
+            "type": "string",
+            "required": true,
+            "min_length": 1,
+            "max_length": 500,
+            "examples": [
+                "https://open.spotify.com/track/5LtBbTHxVQhdotXtA6NXJ6?si=1d2cb35256224f21"
+            ]
+        }
+    ]
+}
