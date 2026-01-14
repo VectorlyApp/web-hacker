@@ -55,13 +55,14 @@ jobs:
       # ---------------------------------
       - name: Resolve deps via TestPyPI only (strict)
         run: |
+          set -e
           python -m venv /tmp/testpypi-strict
           source /tmp/testpypi-strict/bin/activate
           pip install --upgrade pip uv
 
+          echo "Strict TestPyPI dependency resolution (expected to fail if deps are missing)"
           uv pip install \
             --index-url https://test.pypi.org/simple/ \
-            --no-extra-index \
             dist/*.whl
 
           python -c "import web_hacker"
@@ -124,6 +125,9 @@ jobs:
           DEV_VERSION="${VERSION}.dev${TIMESTAMP}"
           sed -i "s/version = \"$VERSION\"/version = \"$DEV_VERSION\"/" pyproject.toml
           echo "DEV_VERSION=$DEV_VERSION" >> $GITHUB_ENV
+
+      - name: Clean dist
+        run: rm -rf dist
 
       - name: Build TestPyPI artifacts
         run: python -m build
