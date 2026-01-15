@@ -4,7 +4,7 @@ web_hacker/agents/guide_agent/guide_agent.py
 Guide agent that guides the user through the process of creating or editing a routine.
 """
 
-import uuid
+from uuid import uuid4
 from typing import Any, Callable
 
 from data_models.guide_agent.conversation import (
@@ -85,7 +85,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
 
         # Initialize conversation state
         self._state = GuideAgentConversationState(
-            guide_chat_id=guide_chat_id or str(uuid.uuid4())
+            guide_chat_id=guide_chat_id or str(uuid4())
         )
 
         logger.info(
@@ -175,7 +175,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
         Returns:
             PendingToolInvocation stored in state and ready to emit
         """
-        invocation_id = str(uuid.uuid4())
+        invocation_id = str(uuid4())
 
         pending = PendingToolInvocation(
             invocation_id=invocation_id,
@@ -224,7 +224,8 @@ Ask clarifying questions if needed. Be conversational and helpful."""
                 **tool_arguments,
             }
 
-        raise UnknownToolError(f"Unknown tool: {tool_name}")
+        logger.error("Unknown tool \"%s\" with arguments: %s", tool_name, tool_arguments)
+        raise UnknownToolError(f"Unknown tool \"{tool_name}\" with arguments: {tool_arguments}")
 
     # Public methods _______________________________________________________________________________________________________
 
@@ -405,7 +406,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
         """
         old_guide_chat_id = self._state.guide_chat_id
         self._state = GuideAgentConversationState(
-            guide_chat_id=str(uuid.uuid4())
+            guide_chat_id=str(uuid4())
         )
 
         logger.info(
