@@ -1,0 +1,188 @@
+"""
+web_hacker/llms/llm_client.py
+
+Unified LLM client supporting OpenAI and Anthropic models.
+"""
+
+from typing import Any, TypeVar
+
+from pydantic import BaseModel
+
+from data_models.llms import LLMModel, LLMVendor, OpenAIModel, get_model_vendor
+from llms.abstract_llm_vendor_client import AbstractLLMVendorClient
+from llms.anthropic_client import AnthropicClient
+from llms.openai_client import OpenAIClient
+from utils.logger import get_logger
+
+logger = get_logger(name=__name__)
+
+
+T = TypeVar("T", bound=BaseModel)
+
+
+class LLMClient:
+    """
+    Unified LLM client class for interacting with OpenAI and Anthropic APIs.
+
+    This is a facade that delegates to vendor-specific clients (OpenAIClient,
+    AnthropicClient) based on the selected model.
+
+    Supports:
+    - Sync and async text generation
+    - Structured responses using Pydantic models
+    - Tool/function registration
+    """
+
+    # Magic methods ________________________________________________________________________________________________________
+
+    def __init__(
+        self,
+        llm_model: LLMModel = OpenAIModel.GPT_5_MINI,
+    ) -> None:
+        self.llm_model = llm_model
+        self.vendor = get_model_vendor(llm_model)
+
+        # initialize the appropriate vendor client
+        self._vendor_client: AbstractLLMVendorClient
+        if self.vendor == LLMVendor.OPENAI:
+            self._vendor_client = OpenAIClient(model=llm_model)
+        elif self.vendor == LLMVendor.ANTHROPIC:
+            self._vendor_client = AnthropicClient(model=llm_model)
+        else:
+            raise ValueError(f"Unsupported vendor: {self.vendor}")
+
+        logger.info("Instantiated LLMClient with model: %s (vendor: %s)", llm_model, self.vendor)
+
+    # Public methods _______________________________________________________________________________________________________
+
+    def register_tool(
+        self,
+        name: str,
+        description: str,
+        parameters: dict[str, Any],
+    ) -> None:
+        """
+        Register a tool for function calling.
+
+        Args:
+            name: The name of the tool/function.
+            description: Description of what the tool does.
+            parameters: JSON Schema describing the tool's parameters.
+        """
+        logger.debug("Registering tool %s (description: %s) with parameters: %s", name, description, parameters)
+        self._vendor_client.register_tool(name, description, parameters)
+
+    def clear_tools(self) -> None:
+        """Clear all registered tools."""
+        self._vendor_client.clear_tools()
+        logger.debug("Cleared all registered tools")
+
+    def get_text_sync(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> str:
+        """
+        Get a text response synchronously.
+
+        Args:
+            prompt: The user prompt/message.
+            system_prompt: Optional system prompt for context.
+            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
+            temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
+
+        Returns:
+            The generated text response.
+        """
+        return self._vendor_client.get_text_sync(
+            prompt,
+            system_prompt,
+            max_tokens,
+            temperature,
+        )
+
+    async def get_text_async(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> str:
+        """
+        Get a text response asynchronously.
+
+        Args:
+            prompt: The user prompt/message.
+            system_prompt: Optional system prompt for context.
+            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
+            temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
+
+        Returns:
+            The generated text response.
+        """
+        return await self._vendor_client.get_text_async(
+            prompt,
+            system_prompt,
+            max_tokens,
+            temperature,
+        )
+
+    def get_structured_response_sync(
+        self,
+        prompt: str,
+        response_model: type[T],
+        system_prompt: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> T:
+        """
+        Get a structured response as a Pydantic model synchronously.
+
+        Args:
+            prompt: The user prompt/message.
+            response_model: Pydantic model class for the response structure.
+            system_prompt: Optional system prompt for context.
+            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
+            temperature: Sampling temperature. Defaults to DEFAULT_STRUCTURED_TEMPERATURE.
+
+        Returns:
+            Parsed response as the specified Pydantic model.
+        """
+        return self._vendor_client.get_structured_response_sync(
+            prompt,
+            response_model,
+            system_prompt,
+            max_tokens,
+            temperature,
+        )
+
+    async def get_structured_response_async(
+        self,
+        prompt: str,
+        response_model: type[T],
+        system_prompt: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> T:
+        """
+        Get a structured response as a Pydantic model asynchronously.
+
+        Args:
+            prompt: The user prompt/message.
+            response_model: Pydantic model class for the response structure.
+            system_prompt: Optional system prompt for context.
+            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
+            temperature: Sampling temperature. Defaults to DEFAULT_STRUCTURED_TEMPERATURE.
+
+        Returns:
+            Parsed response as the specified Pydantic model.
+        """
+        return await self._vendor_client.get_structured_response_async(
+            prompt,
+            response_model,
+            system_prompt,
+            max_tokens,
+            temperature,
+        )
