@@ -46,8 +46,8 @@ Example:
 ### Quickstart
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/ec47cfb2-5fb8-4726-b136-cb51df3c1b83" width="760" controls autoplay loop muted>
-    Video not supported? Watch the demo on YouTube: https://youtu.be/YFVQSuiaWmM
+  <video src="https://github.com/user-attachments/assets/d2262dcf-e004-47f0-844b-0a60b566388d" width="760" controls autoplay loop muted>
+    Video not supported? [Watch the demo on YouTube](https://youtu.be/s4Xe_2pXcSQ)
   </video>
 </p>
 
