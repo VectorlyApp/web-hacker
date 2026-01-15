@@ -108,7 +108,9 @@ Ask clarifying questions if needed. Be conversational and helpful."""
 
     def _register_tools(self) -> None:
         """Register all tools with the LLM client."""
-        self.llm_client.register_tool_from_function(start_routine_discovery_job_creation)
+        self.llm_client.register_tool_from_function(
+            func=start_routine_discovery_job_creation,
+        )
 
     def _emit_message(self, message: GuideAgentMessage) -> None:
         """Emit a message via the callback."""

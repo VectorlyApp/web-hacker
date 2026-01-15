@@ -4,11 +4,12 @@ web_hacker/llms/llm_client.py
 Unified LLM client supporting OpenAI and Anthropic models.
 """
 
-from typing import Any, TypeVar
+from typing import Any, Callable, TypeVar
 
 from pydantic import BaseModel
 
 from data_models.llms import LLMModel, LLMVendor, OpenAIModel, get_model_vendor
+from llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
 from llms.abstract_llm_vendor_client import AbstractLLMVendorClient
 from llms.anthropic_client import AnthropicClient
 from llms.openai_client import OpenAIClient
@@ -55,6 +56,8 @@ class LLMClient:
 
     # Public methods _______________________________________________________________________________________________________
 
+    ## Tools
+
     def register_tool(
         self,
         name: str,
@@ -72,10 +75,29 @@ class LLMClient:
         logger.debug("Registering tool %s (description: %s) with parameters: %s", name, description, parameters)
         self._vendor_client.register_tool(name, description, parameters)
 
+    def register_tool_from_function(self, func: Callable[..., Any]) -> None:
+        """
+        Register a tool from a Python function, extracting metadata automatically.
+
+        Extracts:
+        - name: from func.__name__
+        - description: from the docstring (first paragraph)
+        - parameters: JSON Schema generated from type hints via pydantic
+
+        Args:
+            func: The function to register as a tool. Must have type hints.
+        """
+        name = func.__name__
+        description = extract_description_from_docstring(func.__doc__)
+        parameters = generate_parameters_schema(func)
+        self.register_tool(name, description, parameters)
+
     def clear_tools(self) -> None:
         """Clear all registered tools."""
         self._vendor_client.clear_tools()
         logger.debug("Cleared all registered tools")
+
+    ## Text generation
 
     def get_text_sync(
         self,
@@ -128,6 +150,8 @@ class LLMClient:
             max_tokens,
             temperature,
         )
+
+    ## Structured responses
 
     def get_structured_response_sync(
         self,
