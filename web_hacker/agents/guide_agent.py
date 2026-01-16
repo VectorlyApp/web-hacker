@@ -1,12 +1,12 @@
 """
-web_hacker/agents/guide_agent/guide_agent.py
+web_hacker/agents/guide_agent.py
 
 Guide agent that guides the user through the process of creating or editing a routine.
 """
 
 from datetime import datetime
-from uuid import uuid4
 from typing import Any, Callable
+from uuid import uuid4
 
 from web_hacker.data_models.llms.interaction import (
     ChatLite,
@@ -119,7 +119,7 @@ Your job is to help users define their automation needs by gathering:
         self._register_tools()
 
         # Initialize or load conversation state
-        self._thread = chat_thread or ChatThreadLite(id=str(uuid4()))
+        self._thread = chat_thread or ChatThreadLite()
         self._chats: dict[str, ChatLite] = {}
         if existing_chats:
             for chat in existing_chats:
@@ -171,7 +171,6 @@ Your job is to help users define their automation needs by gathering:
             The created ChatLite object.
         """
         chat = ChatLite(
-            id=str(uuid4()),
             thread_id=self._thread.id,
             role=role,
             content=content,
@@ -540,7 +539,7 @@ Your job is to help users define their automation needs by gathering:
         Generates a new thread and clears all messages.
         """
         old_thread_id = self._thread.id
-        self._thread = ChatThreadLite(id=str(uuid4()))
+        self._thread = ChatThreadLite()
         self._chats = {}
 
         if self._persist_chat_thread_callable:

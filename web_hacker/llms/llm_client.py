@@ -61,6 +61,7 @@ class LLMClient:
 
         logger.info("Instantiated LLMClient with model: %s (vendor: %s)", llm_model, self.vendor)
 
+
     # Public methods _______________________________________________________________________________________________________
 
     ## Tools

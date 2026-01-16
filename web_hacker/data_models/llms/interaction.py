@@ -7,6 +7,7 @@ Data models for LLM interactions and agent communication.
 from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -138,8 +139,8 @@ class ChatLite(BaseModel):
     Lightweight model for internal agent use.
     """
     id: str = Field(
-        ...,
-        description="Unique message ID",
+        default_factory=lambda: str(uuid4()),
+        description="Unique message ID (UUIDv4)",
     )
     thread_id: str = Field(
         ...,
@@ -162,8 +163,8 @@ class ChatThreadLite(BaseModel):
     Lightweight model for internal agent use.
     """
     id: str = Field(
-        ...,
-        description="Unique thread ID",
+        default_factory=lambda: str(uuid4()),
+        description="Unique thread ID (UUIDv4)",
     )
     message_ids: list[str] = Field(
         default_factory=list,

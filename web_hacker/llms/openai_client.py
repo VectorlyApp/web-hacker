@@ -39,6 +39,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         self._async_client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY)
         logger.debug("Initialized OpenAIClient with model: %s", model)
 
+
     # Private methods ______________________________________________________________________________________________________
 
     def _prepend_system_prompt(
@@ -59,6 +60,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         if system_prompt:
             return [{"role": "system", "content": system_prompt}] + messages
         return messages
+
 
     # Public methods _______________________________________________________________________________________________________
 
@@ -97,7 +99,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             "model": self.model.value,
             "messages": all_messages,
             "max_completion_tokens": self._resolve_max_tokens(max_tokens),
-                        # Note: GPT-5 models only support temperature=1 (default), so we omit it
+            # Note: GPT-5 models only support temperature=1 (default), so we omit it
         }
         if self._tools:
             kwargs["tools"] = self._tools
@@ -119,7 +121,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             "model": self.model.value,
             "messages": all_messages,
             "max_completion_tokens": self._resolve_max_tokens(max_tokens),
-                        # Note: GPT-5 models only support temperature=1 (default), so we omit it
+            # Note: GPT-5 models only support temperature=1 (default), so we omit it
         }
         if self._tools:
             kwargs["tools"] = self._tools
