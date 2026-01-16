@@ -95,7 +95,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         kwargs: dict[str, Any] = {
             "model": self.model.value,
             "messages": all_messages,
-            "max_tokens": self._resolve_max_tokens(max_tokens),
+            "max_completion_tokens": self._resolve_max_tokens(max_tokens),
             "temperature": self._resolve_temperature(temperature),
         }
         if self._tools:
@@ -117,7 +117,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         kwargs: dict[str, Any] = {
             "model": self.model.value,
             "messages": all_messages,
-            "max_tokens": self._resolve_max_tokens(max_tokens),
+            "max_completion_tokens": self._resolve_max_tokens(max_tokens),
             "temperature": self._resolve_temperature(temperature),
         }
         if self._tools:
@@ -143,7 +143,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             model=self.model.value,
             messages=all_messages,
             response_format=response_model,
-            max_tokens=self._resolve_max_tokens(max_tokens),
+            max_completion_tokens=self._resolve_max_tokens(max_tokens),
             temperature=self._resolve_temperature(temperature, structured=True),
         )
         parsed = response.choices[0].message.parsed
@@ -166,7 +166,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             model=self.model.value,
             messages=all_messages,
             response_format=response_model,
-            max_tokens=self._resolve_max_tokens(max_tokens),
+            max_completion_tokens=self._resolve_max_tokens(max_tokens),
             temperature=self._resolve_temperature(temperature, structured=True),
         )
         parsed = response.choices[0].message.parsed
@@ -189,7 +189,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         kwargs: dict[str, Any] = {
             "model": self.model.value,
             "messages": all_messages,
-            "max_tokens": self._resolve_max_tokens(max_tokens),
+            "max_completion_tokens": self._resolve_max_tokens(max_tokens),
             "temperature": self._resolve_temperature(temperature),
         }
         if self._tools:

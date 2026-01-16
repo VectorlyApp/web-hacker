@@ -96,16 +96,21 @@ class TerminalGuideChat:
     """
 
     WELCOME_MESSAGE = """
-    Welcome! I'll help you create a web automation routine.
+    Welcome! I'll help you create a web automation routine from your
+    CDP (Chrome DevTools Protocol) captures.
 
-    Just describe the task you want to automate (e.g., "Search for flights
-    from NYC to LA"), and I'll guide you through defining the parameters
-    and constraints.
+    I'll analyze your network transactions to identify relevant API
+    endpoints, required cookies, headers, and request patterns that
+    can be turned into a reusable routine.
 
     Commands:
       • Type your message and press Enter to chat
       • Type 'quit' or 'exit' to leave
       • Type 'reset' to start a new conversation
+
+    Links:
+      • Docs: https://vectorly.app/docs
+      • Console: https://console.vectorly.app
     """
 
     def __init__(self) -> None:
@@ -245,7 +250,7 @@ class TerminalGuideChat:
     def run(self) -> None:
         """Run the interactive chat loop."""
         # Print banner and welcome
-        print(colorize(self.BANNER, Colors.CYAN, Colors.BOLD))
+        print(colorize(self.BANNER, Colors.BRIGHT_MAGENTA, Colors.BOLD))
         print(colorize(self.WELCOME_MESSAGE, Colors.DIM))
         print(colorize("  " + "─" * 67, Colors.DIM))
         print()
