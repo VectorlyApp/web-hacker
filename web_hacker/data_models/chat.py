@@ -10,6 +10,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from data_models.resource_base import ResourceBase
+
 
 class ChatRole(StrEnum):
     """
