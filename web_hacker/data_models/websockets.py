@@ -467,6 +467,9 @@ class WebSocketStreamResponseType(StrEnum):
     SNAPSHOT = "snapshot"
     UPDATE = "update"
     TOOL_INVOCATION_RESULT = "tool_invocation_result"
+    # chat streaming
+    STREAM_CHUNK = "stream_chunk"
+    STREAM_END = "stream_end"
 
 
 ## Browser-specific command responses
@@ -609,6 +612,28 @@ class WebSocketToolInvocationResultResponse(WebSocketResponseBase):
     )
 
 
+class WebSocketStreamChunkResponse(WebSocketResponseBase):
+    """Text chunk during streaming LLM response."""
+
+    type: Literal[WebSocketStreamResponseType.STREAM_CHUNK] = (
+        WebSocketStreamResponseType.STREAM_CHUNK
+    )
+    content: str = Field(
+        description="Text chunk (delta) from the streaming response",
+    )
+
+
+class WebSocketStreamEndResponse(WebSocketResponseBase):
+    """Signals end of streaming LLM response with full accumulated content."""
+
+    type: Literal[WebSocketStreamResponseType.STREAM_END] = (
+        WebSocketStreamResponseType.STREAM_END
+    )
+    content: str = Field(
+        description="Full accumulated message content",
+    )
+
+
 ## Server response unions
 
 WebSocketServerResponse = (
@@ -630,4 +655,6 @@ WebSocketServerResponse = (
     | WebSocketSnapshotResponse
     | WebSocketUpdateResponse
     | WebSocketToolInvocationResultResponse
+    | WebSocketStreamChunkResponse
+    | WebSocketStreamEndResponse
 )
