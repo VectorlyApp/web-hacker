@@ -7,16 +7,14 @@ Guide agent that guides the user through the process of creating or editing a ro
 from uuid import uuid4
 from typing import Any, Callable
 
-from data_models.guide_agent.conversation import (
-    ConversationMessage,
-    ConversationRole,
-    GuideAgentConversationState,
+from data_models.chat import (
+    ChatMessage,
+    ChatRole,
+    ChatState,
     PendingToolInvocation,
     ToolInvocationStatus,
-)
-from data_models.guide_agent.message import (
-    GuideAgentMessage,
-    GuideAgentMessageType,
+    ChatMessage,
+    ChatMessageType,
 )
 from data_models.llms import LLMModel, OpenAIModel
 from llms.llm_client import LLMClient
@@ -39,7 +37,7 @@ class GuideAgent:
     via callback before execution.
 
     Usage:
-        def handle_message(message: GuideAgentMessage) -> None:
+        def handle_message(message: ChatMessage) -> None:
             print(f"[{message.type}] {message.content}")
 
         agent = GuideAgent(emit_message_callable=handle_message)
@@ -62,7 +60,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
 
     def __init__(
         self,
-        emit_message_callable: Callable[[GuideAgentMessage], None],
+        emit_message_callable: Callable[[ChatMessage], None],
         llm_model: LLMModel = OpenAIModel.GPT_5_MINI,
         guide_chat_id: str | None = None,
     ) -> None:
@@ -82,7 +80,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
         self._register_tools()
 
         # Initialize conversation state
-        self._state = GuideAgentConversationState(
+        self._state = ChatState(
             guide_chat_id=guide_chat_id or str(uuid4())
         )
 
@@ -112,18 +110,18 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             func=start_routine_discovery_job_creation,
         )
 
-    def _emit_message(self, message: GuideAgentMessage) -> None:
+    def _emit_message(self, message: ChatMessage) -> None:
         """Emit a message via the callback."""
         self._emit_message_callable(message)
 
     def _add_message_to_history(
         self,
-        role: ConversationRole,
+        role: ChatRole,
         content: str,
     ) -> None:
         """Add a message to the conversation history."""
         self._state.messages.append(
-            ConversationMessage(role=role, content=content)
+            ChatMessage(role=role, content=content)
         )
 
     def _build_conversation_prompt(self) -> str:
@@ -243,15 +241,15 @@ Ask clarifying questions if needed. Be conversational and helpful."""
         # Block new messages if there's a pending tool invocation
         if self._state.pending_tool_invocation:
             self._emit_message(
-                GuideAgentMessage(
-                    type=GuideAgentMessageType.ERROR,
+                ChatMessage(
+                    type=ChatMessageType.ERROR,
                     error="Please confirm or deny the pending tool invocation before sending new messages",
                 )
             )
             return
 
         # Add user message to history
-        self._add_message_to_history(ConversationRole.USER, content)
+        self._add_message_to_history(ChatRole.USER, content)
 
         # Future: Call LLM, parse response, handle tool calls
         raise NotImplementedError("LLM conversation logic to be implemented")
@@ -271,8 +269,8 @@ Ask clarifying questions if needed. Be conversational and helpful."""
 
         if not pending:
             self._emit_message(
-                GuideAgentMessage(
-                    type=GuideAgentMessageType.ERROR,
+                ChatMessage(
+                    type=ChatMessageType.ERROR,
                     error="No pending tool invocation to confirm",
                 )
             )
@@ -280,8 +278,8 @@ Ask clarifying questions if needed. Be conversational and helpful."""
 
         if pending.invocation_id != invocation_id:
             self._emit_message(
-                GuideAgentMessage(
-                    type=GuideAgentMessageType.ERROR,
+                ChatMessage(
+                    type=ChatMessageType.ERROR,
                     error=f"Invocation ID mismatch: expected {pending.invocation_id}",
                 )
             )
@@ -296,8 +294,8 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             self._state.pending_tool_invocation = None
 
             self._emit_message(
-                GuideAgentMessage(
-                    type=GuideAgentMessageType.TOOL_INVOCATION_RESULT,
+                ChatMessage(
+                    type=ChatMessageType.TOOL_INVOCATION_RESULT,
                     tool_invocation=pending,
                     tool_result=result,
                 )
@@ -312,8 +310,8 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             pending.status = ToolInvocationStatus.FAILED
 
             self._emit_message(
-                GuideAgentMessage(
-                    type=GuideAgentMessageType.TOOL_INVOCATION_RESULT,
+                ChatMessage(
+                    type=ChatMessageType.TOOL_INVOCATION_RESULT,
                     tool_invocation=pending,
                     error=str(e),
                 )
@@ -345,8 +343,8 @@ Ask clarifying questions if needed. Be conversational and helpful."""
 
         if not pending:
             self._emit_message(
-                GuideAgentMessage(
-                    type=GuideAgentMessageType.ERROR,
+                ChatMessage(
+                    type=ChatMessageType.ERROR,
                     error="No pending tool invocation to deny",
                 )
             )
@@ -354,8 +352,8 @@ Ask clarifying questions if needed. Be conversational and helpful."""
 
         if pending.invocation_id != invocation_id:
             self._emit_message(
-                GuideAgentMessage(
-                    type=GuideAgentMessageType.ERROR,
+                ChatMessage(
+                    type=ChatMessageType.ERROR,
                     error=f"Invocation ID mismatch: expected {pending.invocation_id}",
                 )
             )
@@ -369,11 +367,11 @@ Ask clarifying questions if needed. Be conversational and helpful."""
         denial_message = "Tool invocation denied"
         if reason:
             denial_message += f": {reason}"
-        self._add_message_to_history(ConversationRole.SYSTEM, denial_message)
+        self._add_message_to_history(ChatRole.SYSTEM, denial_message)
 
         self._emit_message(
-            GuideAgentMessage(
-                type=GuideAgentMessageType.TOOL_INVOCATION_RESULT,
+            ChatMessage(
+                type=ChatMessageType.TOOL_INVOCATION_RESULT,
                 tool_invocation=pending,
                 content=denial_message,
             )
@@ -385,12 +383,12 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             reason or "no reason provided",
         )
 
-    def get_state(self) -> GuideAgentConversationState:
+    def get_state(self) -> ChatState:
         """
         Get the current conversation state.
 
         Returns:
-            Current GuideAgentConversationState
+            Current ChatState
         """
         return self._state
 
@@ -401,7 +399,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
         Generates a new guide_chat_id and clears all messages.
         """
         old_guide_chat_id = self._state.guide_chat_id
-        self._state = GuideAgentConversationState(
+        self._state = ChatState(
             guide_chat_id=str(uuid4())
         )
 

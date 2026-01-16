@@ -1,7 +1,7 @@
 """
-web_hacker/data_models/chat/conversation.py
+web_hacker/data_models/chat.py
 
-Conversation state data models for the chat.
+Chat state data models for the chat.
 """
 
 from datetime import datetime, timezone
@@ -83,7 +83,7 @@ class PendingToolInvocation(BaseModel):
     )
 
 
-class ChatConversationState(BaseModel):
+class ChatState(BaseModel):
     """
     Full state of a chat conversation session.
     """
@@ -122,9 +122,9 @@ class ChatMessageType(StrEnum):
 
 class ChatMessage(BaseModel):
     """
-    Message emitted by the guide agent via callback.
+    Message emitted by the chat via callback.
 
-    This is the internal message format used by GuideAgent to communicate
+    This is the internal message format used by Chat to communicate
     with its host (e.g., CLI, WebSocket handler in servers repo).
     """
 
