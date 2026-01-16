@@ -96,7 +96,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             "model": self.model.value,
             "messages": all_messages,
             "max_completion_tokens": self._resolve_max_tokens(max_tokens),
-            "temperature": self._resolve_temperature(temperature),
+                        # Note: GPT-5 models only support temperature=1 (default), so we omit it
         }
         if self._tools:
             kwargs["tools"] = self._tools
@@ -118,7 +118,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             "model": self.model.value,
             "messages": all_messages,
             "max_completion_tokens": self._resolve_max_tokens(max_tokens),
-            "temperature": self._resolve_temperature(temperature),
+                        # Note: GPT-5 models only support temperature=1 (default), so we omit it
         }
         if self._tools:
             kwargs["tools"] = self._tools
@@ -144,7 +144,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             messages=all_messages,
             response_format=response_model,
             max_completion_tokens=self._resolve_max_tokens(max_tokens),
-            temperature=self._resolve_temperature(temperature, structured=True),
+            # Note: GPT-5 models only support temperature=1 (default), so we omit it
         )
         parsed = response.choices[0].message.parsed
         if parsed is None:
@@ -167,7 +167,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             messages=all_messages,
             response_format=response_model,
             max_completion_tokens=self._resolve_max_tokens(max_tokens),
-            temperature=self._resolve_temperature(temperature, structured=True),
+            # Note: GPT-5 models only support temperature=1 (default), so we omit it
         )
         parsed = response.choices[0].message.parsed
         if parsed is None:
@@ -190,7 +190,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             "model": self.model.value,
             "messages": all_messages,
             "max_completion_tokens": self._resolve_max_tokens(max_tokens),
-            "temperature": self._resolve_temperature(temperature),
+                        # Note: GPT-5 models only support temperature=1 (default), so we omit it
         }
         if self._tools:
             kwargs["tools"] = self._tools
