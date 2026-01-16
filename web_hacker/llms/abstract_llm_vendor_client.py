@@ -9,7 +9,8 @@ from typing import Any, ClassVar, TypeVar
 
 from pydantic import BaseModel
 
-from data_models.llms import LLMModel
+from web_hacker.data_models.chat import LLMChatResponse
+from web_hacker.data_models.llms import LLMModel
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -95,7 +96,7 @@ class AbstractLLMVendorClient(ABC):
     @abstractmethod
     def get_text_sync(
         self,
-        prompt: str,
+        messages: list[dict[str, str]],
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
@@ -104,7 +105,7 @@ class AbstractLLMVendorClient(ABC):
         Get a text response synchronously.
 
         Args:
-            prompt: The user prompt/message.
+            messages: List of message dicts with 'role' and 'content' keys.
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
             temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
@@ -117,7 +118,7 @@ class AbstractLLMVendorClient(ABC):
     @abstractmethod
     async def get_text_async(
         self,
-        prompt: str,
+        messages: list[dict[str, str]],
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
@@ -126,7 +127,7 @@ class AbstractLLMVendorClient(ABC):
         Get a text response asynchronously.
 
         Args:
-            prompt: The user prompt/message.
+            messages: List of message dicts with 'role' and 'content' keys.
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
             temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
@@ -141,7 +142,7 @@ class AbstractLLMVendorClient(ABC):
     @abstractmethod
     def get_structured_response_sync(
         self,
-        prompt: str,
+        messages: list[dict[str, str]],
         response_model: type[T],
         system_prompt: str | None = None,
         max_tokens: int | None = None,
@@ -151,7 +152,7 @@ class AbstractLLMVendorClient(ABC):
         Get a structured response as a Pydantic model synchronously.
 
         Args:
-            prompt: The user prompt/message.
+            messages: List of message dicts with 'role' and 'content' keys.
             response_model: Pydantic model class for the response structure.
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
@@ -165,7 +166,7 @@ class AbstractLLMVendorClient(ABC):
     @abstractmethod
     async def get_structured_response_async(
         self,
-        prompt: str,
+        messages: list[dict[str, str]],
         response_model: type[T],
         system_prompt: str | None = None,
         max_tokens: int | None = None,
@@ -175,7 +176,7 @@ class AbstractLLMVendorClient(ABC):
         Get a structured response as a Pydantic model asynchronously.
 
         Args:
-            prompt: The user prompt/message.
+            messages: List of message dicts with 'role' and 'content' keys.
             response_model: Pydantic model class for the response structure.
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
@@ -183,5 +184,29 @@ class AbstractLLMVendorClient(ABC):
 
         Returns:
             Parsed response as the specified Pydantic model.
+        """
+        pass
+
+    ## Chat with tools
+
+    @abstractmethod
+    def chat_sync(
+        self,
+        messages: list[dict[str, str]],
+        system_prompt: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> LLMChatResponse:
+        """
+        Chat with the LLM using a message history, with tool calling support.
+
+        Args:
+            messages: List of message dicts with 'role' and 'content' keys.
+            system_prompt: Optional system prompt for context.
+            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
+            temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
+
+        Returns:
+            LLMChatResponse with text content and optional tool call.
         """
         pass

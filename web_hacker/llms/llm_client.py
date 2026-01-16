@@ -8,12 +8,18 @@ from typing import Any, Callable, TypeVar
 
 from pydantic import BaseModel
 
-from data_models.llms import LLMModel, LLMVendor, OpenAIModel, get_model_vendor
-from llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
-from llms.abstract_llm_vendor_client import AbstractLLMVendorClient
-from llms.anthropic_client import AnthropicClient
-from llms.openai_client import OpenAIClient
-from utils.logger import get_logger
+from web_hacker.data_models.chat import LLMChatResponse
+from web_hacker.data_models.llms import (
+    LLMModel,
+    LLMVendor,
+    OpenAIModel,
+    get_model_vendor,
+)
+from web_hacker.llms.tools.tool_utils import extract_description_from_docstring, generate_parameters_schema
+from web_hacker.llms.abstract_llm_vendor_client import AbstractLLMVendorClient
+from web_hacker.llms.anthropic_client import AnthropicClient
+from web_hacker.llms.openai_client import OpenAIClient
+from web_hacker.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
 
@@ -101,7 +107,7 @@ class LLMClient:
 
     def get_text_sync(
         self,
-        prompt: str,
+        messages: list[dict[str, str]],
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
@@ -110,7 +116,7 @@ class LLMClient:
         Get a text response synchronously.
 
         Args:
-            prompt: The user prompt/message.
+            messages: List of message dicts with 'role' and 'content' keys.
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
             temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
@@ -119,7 +125,7 @@ class LLMClient:
             The generated text response.
         """
         return self._vendor_client.get_text_sync(
-            prompt,
+            messages,
             system_prompt,
             max_tokens,
             temperature,
@@ -127,7 +133,7 @@ class LLMClient:
 
     async def get_text_async(
         self,
-        prompt: str,
+        messages: list[dict[str, str]],
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
@@ -136,7 +142,7 @@ class LLMClient:
         Get a text response asynchronously.
 
         Args:
-            prompt: The user prompt/message.
+            messages: List of message dicts with 'role' and 'content' keys.
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
             temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
@@ -145,7 +151,7 @@ class LLMClient:
             The generated text response.
         """
         return await self._vendor_client.get_text_async(
-            prompt,
+            messages,
             system_prompt,
             max_tokens,
             temperature,
@@ -155,7 +161,7 @@ class LLMClient:
 
     def get_structured_response_sync(
         self,
-        prompt: str,
+        messages: list[dict[str, str]],
         response_model: type[T],
         system_prompt: str | None = None,
         max_tokens: int | None = None,
@@ -165,7 +171,7 @@ class LLMClient:
         Get a structured response as a Pydantic model synchronously.
 
         Args:
-            prompt: The user prompt/message.
+            messages: List of message dicts with 'role' and 'content' keys.
             response_model: Pydantic model class for the response structure.
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
@@ -175,7 +181,7 @@ class LLMClient:
             Parsed response as the specified Pydantic model.
         """
         return self._vendor_client.get_structured_response_sync(
-            prompt,
+            messages,
             response_model,
             system_prompt,
             max_tokens,
@@ -184,7 +190,7 @@ class LLMClient:
 
     async def get_structured_response_async(
         self,
-        prompt: str,
+        messages: list[dict[str, str]],
         response_model: type[T],
         system_prompt: str | None = None,
         max_tokens: int | None = None,
@@ -194,7 +200,7 @@ class LLMClient:
         Get a structured response as a Pydantic model asynchronously.
 
         Args:
-            prompt: The user prompt/message.
+            messages: List of message dicts with 'role' and 'content' keys.
             response_model: Pydantic model class for the response structure.
             system_prompt: Optional system prompt for context.
             max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
@@ -204,8 +210,36 @@ class LLMClient:
             Parsed response as the specified Pydantic model.
         """
         return await self._vendor_client.get_structured_response_async(
-            prompt,
+            messages,
             response_model,
+            system_prompt,
+            max_tokens,
+            temperature,
+        )
+
+    ## Chat with tools
+
+    def chat_sync(
+        self,
+        messages: list[dict[str, str]],
+        system_prompt: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+    ) -> LLMChatResponse:
+        """
+        Chat with the LLM using a message history, with tool calling support.
+
+        Args:
+            messages: List of message dicts with 'role' and 'content' keys.
+            system_prompt: Optional system prompt for context.
+            max_tokens: Maximum tokens in the response. Defaults to DEFAULT_MAX_TOKENS.
+            temperature: Sampling temperature (0.0-1.0). Defaults to DEFAULT_TEMPERATURE.
+
+        Returns:
+            LLMChatResponse with text content and optional tool call.
+        """
+        return self._vendor_client.chat_sync(
+            messages,
             system_prompt,
             max_tokens,
             temperature,

@@ -1,7 +1,7 @@
 """
 web_hacker/data_models/chat.py
 
-Chat state data models for the chat.
+Chat data models for the guide agent conversation system.
 """
 
 from datetime import datetime, timezone
@@ -10,48 +10,23 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from data_models.resource_base import ResourceBase
+from web_hacker.data_models.resource_base import ResourceBase
 
 
 class ChatRole(StrEnum):
     """
     Role in a chat message.
     """
-
     USER = "user"
-    ASSISTANT = "assistant"
+    ASSISTANT = "assistant"  # AI
     SYSTEM = "system"
     TOOL = "tool"
-
-
-class ChatMessage(BaseModel):
-    """
-    A single message in the conversation history.
-    """
-
-    role: ChatRole = Field(
-        ...,
-        description="The role of the message sender",
-    )
-    content: str = Field(
-        ...,
-        description="The content of the message",
-    )
-    timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(tz=timezone.utc),
-        description="When the message was created",
-    )
-    metadata: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Additional metadata for the message",
-    )
 
 
 class ToolInvocationStatus(StrEnum):
     """
     Status of a tool invocation.
     """
-
     PENDING_CONFIRMATION = "pending_confirmation"
     CONFIRMED = "confirmed"
     DENIED = "denied"
@@ -85,29 +60,47 @@ class PendingToolInvocation(BaseModel):
     )
 
 
-class ChatState(BaseModel):
+class Chat(ResourceBase):
     """
-    Full state of a chat conversation session.
+    A single message in a conversation thread.
+
+    Each Chat belongs to a ChatThread and contains a single message
+    from a user, assistant, system, or tool.
+
+    ID format: Chat_<uuid>
     """
-    chat_id: str = Field(
+
+    chat_thread_id: str = Field(
         ...,
-        description="Unique session identifier (UUIDv4)",
+        description="ID of the parent ChatThread this message belongs to",
     )
-    messages: list[ChatMessage] = Field(
+    role: ChatRole = Field(
+        ...,
+        description="The role of the message sender (user, assistant, system, tool)",
+    )
+    content: str = Field(
+        ...,
+        description="The content of the message",
+    )
+
+
+class ChatThread(ResourceBase):
+    """
+    Container for a conversation thread with 0+ Chat messages.
+
+    A ChatThread maintains an ordered list of Chat IDs and tracks
+    any pending tool invocations that require user confirmation.
+
+    ID format: ChatThread_<uuid>
+    """
+
+    chat_ids: list[str] = Field(
         default_factory=list,
-        description="Conversation history",
+        description="Ordered list of Chat IDs in this thread (bidirectional link)",
     )
     pending_tool_invocation: PendingToolInvocation | None = Field(
         default=None,
-        description="Tool invocation awaiting confirmation, if any",
-    )
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(tz=timezone.utc),
-        description="When the session was created",
-    )
-    updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(tz=timezone.utc),
-        description="When the session was last updated",
+        description="Tool invocation awaiting user confirmation, if any",
     )
 
 
@@ -122,11 +115,11 @@ class ChatMessageType(StrEnum):
     ERROR = "error"
 
 
-class ChatMessage(BaseModel):
+class EmittedChatMessage(BaseModel):
     """
-    Message emitted by the chat via callback.
+    Message emitted by the guide agent via callback.
 
-    This is the internal message format used by Chat to communicate
+    This is the internal message format used by GuideAgent to communicate
     with its host (e.g., CLI, WebSocket handler in servers repo).
     """
 
@@ -135,7 +128,7 @@ class ChatMessage(BaseModel):
         description="The type of message being emitted",
     )
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=lambda: datetime.now(tz=timezone.utc),
         description="When the message was created",
     )
     content: str | None = Field(
@@ -153,4 +146,32 @@ class ChatMessage(BaseModel):
     error: str | None = Field(
         default=None,
         description="Error message if type is ERROR",
+    )
+
+
+class LLMToolCall(BaseModel):
+    """
+    A tool call requested by the LLM.
+    """
+    tool_name: str = Field(
+        ...,
+        description="Name of the tool to invoke",
+    )
+    tool_arguments: dict[str, Any] = Field(
+        ...,
+        description="Arguments to pass to the tool",
+    )
+
+
+class LLMChatResponse(BaseModel):
+    """
+    Response from an LLM chat completion with tool support.
+    """
+    content: str | None = Field(
+        default=None,
+        description="Text content of the response",
+    )
+    tool_call: LLMToolCall | None = Field(
+        default=None,
+        description="Tool call requested by the LLM, if any",
     )

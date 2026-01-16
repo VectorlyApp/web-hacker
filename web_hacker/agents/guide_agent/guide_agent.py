@@ -4,40 +4,39 @@ web_hacker/agents/guide_agent/guide_agent.py
 Guide agent that guides the user through the process of creating or editing a routine.
 """
 
+from datetime import datetime
 from uuid import uuid4
 from typing import Any, Callable
 
-from data_models.chat import (
-    ChatMessage,
+from web_hacker.data_models.chat import (
+    Chat,
+    ChatThread,
     ChatRole,
-    ChatState,
+    EmittedChatMessage,
+    ChatMessageType,
     PendingToolInvocation,
     ToolInvocationStatus,
-    ChatMessage,
-    ChatMessageType,
 )
-from data_models.llms import LLMModel, OpenAIModel
-from llms.llm_client import LLMClient
-from llms.tools.guide_agent_tools import start_routine_discovery_job_creation
-from utils.exceptions import UnknownToolError
-from utils.logger import get_logger
+from web_hacker.data_models.llms import LLMModel, OpenAIModel
+from web_hacker.llms.llm_client import LLMClient
+from web_hacker.llms.tools.guide_agent_tools import start_routine_discovery_job_creation
+from web_hacker.utils.exceptions import UnknownToolError
+from web_hacker.utils.logger import get_logger
 
 
 logger = get_logger(name=__name__)
-
-# TODO: guide agent should be given path to CDP assets
 
 
 class GuideAgent:
     """
     Guide agent that guides the user through the process of creating or editing a routine.
 
-    The agent maintains conversation state and uses LLM tool-calling to determine
+    The agent maintains a ChatThread with Chat messages and uses LLM tool-calling to determine
     when to initiate routine discovery. Tool invocations require user confirmation
     via callback before execution.
 
     Usage:
-        def handle_message(message: ChatMessage) -> None:
+        def handle_message(message: EmittedChatMessage) -> None:
             print(f"[{message.type}] {message.content}")
 
         agent = GuideAgent(emit_message_callable=handle_message)
@@ -46,61 +45,103 @@ class GuideAgent:
 
     # Class constants ______________________________________________________________________________________________________
 
-    SYSTEM_PROMPT: str = """You are a helpful assistant that guides users through \
-creating automation routines. Your job is to:
-1. Understand what task the user wants to automate
-2. Clarify what data/output they expect from the routine
-3. Identify required input parameters
-4. Understand any filters or constraints
+    SYSTEM_PROMPT: str = """You are a helpful assistant that guides users through creating \
+web automation routines using the Web Hacker tool.
 
-When you have enough information, use the start_routine_discovery_job_creation tool.
-Ask clarifying questions if needed. Be conversational and helpful."""
+## What is Web Hacker?
+
+Web Hacker is a tool that creates reusable web automation routines by learning from \
+user demonstrations. Users record themselves performing a task on a website, and \
+Web Hacker generates a parameterized routine that can be executed programmatically.
+
+## Your Role
+
+Your job is to help users define their automation needs by gathering:
+
+1. **TASK**: What task do they want to automate?
+   - Examples: "Search for train tickets", "Download a research paper", "Look up company info"
+
+2. **OUTPUT**: What data/output should the routine return?
+   - Examples: "List of available trains with prices", "PDF file of the paper", "Company registration details"
+
+3. **PARAMETERS**: What input parameters will the routine need? For each:
+   - Name (e.g., "origin", "destination", "departure_date")
+   - Description (e.g., "The departure station name")
+
+4. **CONSTRAINTS**: Any filters or constraints?
+   - Examples: "Only direct trains", "Papers from 2024", "Only active companies"
+
+5. **WEBSITE**: What website should be used?
+   - Examples: "amtrak.com", "arxiv.org", "sec.gov"
+
+## Guidelines
+
+- Be conversational and helpful
+- Ask clarifying questions if needed
+- Don't overwhelm the user with too many questions at once
+- When you have enough information, use the start_routine_discovery_job_creation tool
+- If the user asks what this tool does, explain it clearly"""
 
     # Magic methods ________________________________________________________________________________________________________
 
     def __init__(
         self,
-        emit_message_callable: Callable[[ChatMessage], None],
+        emit_message_callable: Callable[[EmittedChatMessage], None],
+        persist_chat_callable: Callable[[Chat], None] | None = None,
+        persist_chat_thread_callable: Callable[[ChatThread], None] | None = None,
         llm_model: LLMModel = OpenAIModel.GPT_5_MINI,
-        guide_chat_id: str | None = None,
+        chat_thread: ChatThread | None = None,
+        existing_chats: list[Chat] | None = None,
     ) -> None:
         """
         Initialize the guide agent.
 
         Args:
             emit_message_callable: Callback function to emit messages to the host.
+            persist_chat_callable: Optional callback to persist Chat objects (for DynamoDB).
+            persist_chat_thread_callable: Optional callback to persist ChatThread (for DynamoDB).
             llm_model: The LLM model to use for conversation.
-            guide_chat_id: Optional session ID. If None, generates a new UUIDv4.
+            chat_thread: Existing ChatThread to continue, or None for new conversation.
+            existing_chats: Existing Chat messages if loading from persistence.
         """
         self._emit_message_callable = emit_message_callable
+        self._persist_chat_callable = persist_chat_callable
+        self._persist_chat_thread_callable = persist_chat_thread_callable
+
         self.llm_model = llm_model
         self.llm_client = LLMClient(llm_model)
 
         # Register tools
         self._register_tools()
 
-        # Initialize conversation state
-        self._state = ChatState(
-            guide_chat_id=guide_chat_id or str(uuid4())
-        )
+        # Initialize or load conversation state
+        self._thread = chat_thread or ChatThread()
+        self._chats: dict[str, Chat] = {}
+        if existing_chats:
+            for chat in existing_chats:
+                self._chats[chat.id] = chat
+
+        # Persist initial thread if callback provided
+        if self._persist_chat_thread_callable and chat_thread is None:
+            self._persist_chat_thread_callable(self._thread)
 
         logger.info(
-            "Instantiated GuideAgent with model: %s, guide_chat_id: %s",
+            "Instantiated GuideAgent with model: %s, thread_id: %s",
             llm_model,
-            self._state.guide_chat_id,
+            self._thread.id,
         )
 
     # Properties ___________________________________________________________________________________________________________
 
     @property
-    def guide_chat_id(self) -> str:
-        """Return the current session ID."""
-        return self._state.guide_chat_id
+    def thread_id(self) -> str:
+        """Return the current thread ID."""
+        return self._thread.id
 
     @property
     def has_pending_tool_invocation(self) -> bool:
         """Check if there's a pending tool invocation awaiting confirmation."""
-        return self._state.pending_tool_invocation is not None
+        return self._thread.pending_tool_invocation is not None
 
     # Private methods ______________________________________________________________________________________________________
 
@@ -110,49 +151,54 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             func=start_routine_discovery_job_creation,
         )
 
-    def _emit_message(self, message: ChatMessage) -> None:
+    def _emit_message(self, message: EmittedChatMessage) -> None:
         """Emit a message via the callback."""
         self._emit_message_callable(message)
 
-    def _add_message_to_history(
-        self,
-        role: ChatRole,
-        content: str,
-    ) -> None:
-        """Add a message to the conversation history."""
-        self._state.messages.append(
-            ChatMessage(role=role, content=content)
-        )
-
-    def _build_conversation_prompt(self) -> str:
+    def _add_chat(self, role: ChatRole, content: str) -> Chat:
         """
-        Build the conversation history as a prompt string for the LLM.
-
-        Returns:
-            Formatted prompt string containing conversation history.
-
-        Raises:
-            NotImplementedError: Business logic to be implemented in subsequent PR.
-        """
-        raise NotImplementedError("Business logic to be implemented")
-
-    def _parse_llm_response(
-        self,
-        response: str,
-    ) -> tuple[str | None, dict[str, Any] | None]:
-        """
-        Parse LLM response for text content and tool calls.
+        Create and store a new Chat, update thread, persist if callbacks set.
 
         Args:
-            response: Raw LLM response
+            role: The role of the message sender.
+            content: The content of the message.
 
         Returns:
-            Tuple of (text_content, tool_call_dict or None)
-
-        Raises:
-            NotImplementedError: Business logic to be implemented in subsequent PR.
+            The created Chat object.
         """
-        raise NotImplementedError("Business logic to be implemented")
+        chat = Chat(
+            chat_thread_id=self._thread.id,
+            role=role,
+            content=content,
+        )
+        self._chats[chat.id] = chat
+        self._thread.chat_ids.append(chat.id)
+        self._thread.updated_at = int(datetime.now().timestamp())
+
+        # Persist if callbacks provided
+        if self._persist_chat_callable:
+            self._persist_chat_callable(chat)
+        if self._persist_chat_thread_callable:
+            self._persist_chat_thread_callable(self._thread)
+
+        return chat
+
+    def _build_messages_for_llm(self) -> list[dict[str, str]]:
+        """
+        Build messages list for LLM from Chat objects.
+
+        Returns:
+            List of message dicts with 'role' and 'content' keys.
+        """
+        messages: list[dict[str, str]] = []
+        for chat_id in self._thread.chat_ids:
+            chat = self._chats.get(chat_id)
+            if chat:
+                messages.append({
+                    "role": chat.role.value,
+                    "content": chat.content,
+                })
+        return messages
 
     def _create_tool_invocation_request(
         self,
@@ -177,8 +223,12 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             tool_arguments=tool_arguments,
         )
 
-        # Store in state
-        self._state.pending_tool_invocation = pending
+        # Store in thread
+        self._thread.pending_tool_invocation = pending
+        self._thread.updated_at = int(datetime.now().timestamp())
+
+        if self._persist_chat_thread_callable:
+            self._persist_chat_thread_callable(self._thread)
 
         logger.info(
             "Created tool invocation request: %s (tool: %s)",
@@ -201,7 +251,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             tool_arguments: Arguments for the tool
 
         Returns:
-            Tool execution result with guide_chat_id and params
+            Tool execution result with thread_id and params
 
         Raises:
             UnknownToolError: If tool_name is unknown
@@ -214,7 +264,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             )
             result = start_routine_discovery_job_creation(**tool_arguments)
             return {
-                "guide_chat_id": self._state.guide_chat_id,
+                "thread_id": self._thread.id,
                 **result,
             }
 
@@ -234,14 +284,11 @@ Ask clarifying questions if needed. Be conversational and helpful."""
 
         Args:
             content: The user's message content
-
-        Raises:
-            NotImplementedError: Business logic to be implemented in subsequent PR.
         """
         # Block new messages if there's a pending tool invocation
-        if self._state.pending_tool_invocation:
+        if self._thread.pending_tool_invocation:
             self._emit_message(
-                ChatMessage(
+                EmittedChatMessage(
                     type=ChatMessageType.ERROR,
                     error="Please confirm or deny the pending tool invocation before sending new messages",
                 )
@@ -249,10 +296,48 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             return
 
         # Add user message to history
-        self._add_message_to_history(ChatRole.USER, content)
+        self._add_chat(ChatRole.USER, content)
 
-        # Future: Call LLM, parse response, handle tool calls
-        raise NotImplementedError("LLM conversation logic to be implemented")
+        # Build messages and call LLM
+        messages = self._build_messages_for_llm()
+
+        try:
+            response = self.llm_client.chat_sync(
+                messages=messages,
+                system_prompt=self.SYSTEM_PROMPT,
+            )
+
+            # Handle text response
+            if response.content:
+                self._add_chat(ChatRole.ASSISTANT, response.content)
+                self._emit_message(
+                    EmittedChatMessage(
+                        type=ChatMessageType.CHAT_RESPONSE,
+                        content=response.content,
+                    )
+                )
+
+            # Handle tool call if present
+            if response.tool_call:
+                pending = self._create_tool_invocation_request(
+                    response.tool_call.tool_name,
+                    response.tool_call.tool_arguments,
+                )
+                self._emit_message(
+                    EmittedChatMessage(
+                        type=ChatMessageType.TOOL_INVOCATION_REQUEST,
+                        tool_invocation=pending,
+                    )
+                )
+
+        except Exception as e:
+            logger.exception("Error processing user message: %s", e)
+            self._emit_message(
+                EmittedChatMessage(
+                    type=ChatMessageType.ERROR,
+                    error=str(e),
+                )
+            )
 
     def confirm_tool_invocation(self, invocation_id: str) -> None:
         """
@@ -265,11 +350,11 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             - TOOL_INVOCATION_RESULT with status "executed" and result on success
             - ERROR if no pending invocation or ID mismatch
         """
-        pending = self._state.pending_tool_invocation
+        pending = self._thread.pending_tool_invocation
 
         if not pending:
             self._emit_message(
-                ChatMessage(
+                EmittedChatMessage(
                     type=ChatMessageType.ERROR,
                     error="No pending tool invocation to confirm",
                 )
@@ -278,7 +363,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
 
         if pending.invocation_id != invocation_id:
             self._emit_message(
-                ChatMessage(
+                EmittedChatMessage(
                     type=ChatMessageType.ERROR,
                     error=f"Invocation ID mismatch: expected {pending.invocation_id}",
                 )
@@ -291,10 +376,14 @@ Ask clarifying questions if needed. Be conversational and helpful."""
         try:
             result = self._execute_tool(pending.tool_name, pending.tool_arguments)
             pending.status = ToolInvocationStatus.EXECUTED
-            self._state.pending_tool_invocation = None
+            self._thread.pending_tool_invocation = None
+            self._thread.updated_at = int(datetime.now().timestamp())
+
+            if self._persist_chat_thread_callable:
+                self._persist_chat_thread_callable(self._thread)
 
             self._emit_message(
-                ChatMessage(
+                EmittedChatMessage(
                     type=ChatMessageType.TOOL_INVOCATION_RESULT,
                     tool_invocation=pending,
                     tool_result=result,
@@ -310,7 +399,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             pending.status = ToolInvocationStatus.FAILED
 
             self._emit_message(
-                ChatMessage(
+                EmittedChatMessage(
                     type=ChatMessageType.TOOL_INVOCATION_RESULT,
                     tool_invocation=pending,
                     error=str(e),
@@ -339,11 +428,11 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             - TOOL_INVOCATION_RESULT with status "denied"
             - ERROR if no pending invocation or ID mismatch
         """
-        pending = self._state.pending_tool_invocation
+        pending = self._thread.pending_tool_invocation
 
         if not pending:
             self._emit_message(
-                ChatMessage(
+                EmittedChatMessage(
                     type=ChatMessageType.ERROR,
                     error="No pending tool invocation to deny",
                 )
@@ -352,7 +441,7 @@ Ask clarifying questions if needed. Be conversational and helpful."""
 
         if pending.invocation_id != invocation_id:
             self._emit_message(
-                ChatMessage(
+                EmittedChatMessage(
                     type=ChatMessageType.ERROR,
                     error=f"Invocation ID mismatch: expected {pending.invocation_id}",
                 )
@@ -361,16 +450,20 @@ Ask clarifying questions if needed. Be conversational and helpful."""
 
         # Update status and clear pending
         pending.status = ToolInvocationStatus.DENIED
-        self._state.pending_tool_invocation = None
+        self._thread.pending_tool_invocation = None
+        self._thread.updated_at = int(datetime.now().timestamp())
+
+        if self._persist_chat_thread_callable:
+            self._persist_chat_thread_callable(self._thread)
 
         # Add denial to conversation history
         denial_message = "Tool invocation denied"
         if reason:
             denial_message += f": {reason}"
-        self._add_message_to_history(ChatRole.SYSTEM, denial_message)
+        self._add_chat(ChatRole.SYSTEM, denial_message)
 
         self._emit_message(
-            ChatMessage(
+            EmittedChatMessage(
                 type=ChatMessageType.TOOL_INVOCATION_RESULT,
                 tool_invocation=pending,
                 content=denial_message,
@@ -383,28 +476,39 @@ Ask clarifying questions if needed. Be conversational and helpful."""
             reason or "no reason provided",
         )
 
-    def get_state(self) -> ChatState:
+    def get_thread(self) -> ChatThread:
         """
-        Get the current conversation state.
+        Get the current conversation thread.
 
         Returns:
-            Current ChatState
+            Current ChatThread
         """
-        return self._state
+        return self._thread
+
+    def get_chats(self) -> list[Chat]:
+        """
+        Get all Chat messages in order.
+
+        Returns:
+            List of Chat objects in conversation order.
+        """
+        return [self._chats[chat_id] for chat_id in self._thread.chat_ids if chat_id in self._chats]
 
     def reset(self) -> None:
         """
         Reset the conversation to a fresh state.
 
-        Generates a new guide_chat_id and clears all messages.
+        Generates a new thread and clears all messages.
         """
-        old_guide_chat_id = self._state.guide_chat_id
-        self._state = ChatState(
-            guide_chat_id=str(uuid4())
-        )
+        old_thread_id = self._thread.id
+        self._thread = ChatThread()
+        self._chats = {}
+
+        if self._persist_chat_thread_callable:
+            self._persist_chat_thread_callable(self._thread)
 
         logger.info(
             "Reset conversation from %s to %s",
-            old_guide_chat_id,
-            self._state.guide_chat_id,
+            old_thread_id,
+            self._thread.id,
         )
