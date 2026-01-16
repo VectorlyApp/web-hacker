@@ -1,7 +1,7 @@
 """
-web_hacker/data_models/guide_agent/conversation.py
+web_hacker/data_models/chat/conversation.py
 
-Conversation state data models for the guide agent.
+Conversation state data models for the chat.
 """
 
 from datetime import datetime, timezone
@@ -11,8 +11,10 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
-class ConversationRole(StrEnum):
-    """Role in a conversation message."""
+class ChatRole(StrEnum):
+    """
+    Role in a chat message.
+    """
 
     USER = "user"
     ASSISTANT = "assistant"
@@ -20,10 +22,12 @@ class ConversationRole(StrEnum):
     TOOL = "tool"
 
 
-class ConversationMessage(BaseModel):
-    """A single message in the conversation history."""
+class ChatMessage(BaseModel):
+    """
+    A single message in the conversation history.
+    """
 
-    role: ConversationRole = Field(
+    role: ChatRole = Field(
         ...,
         description="The role of the message sender",
     )
@@ -42,7 +46,9 @@ class ConversationMessage(BaseModel):
 
 
 class ToolInvocationStatus(StrEnum):
-    """Status of a tool invocation."""
+    """
+    Status of a tool invocation.
+    """
 
     PENDING_CONFIRMATION = "pending_confirmation"
     CONFIRMED = "confirmed"
@@ -52,8 +58,9 @@ class ToolInvocationStatus(StrEnum):
 
 
 class PendingToolInvocation(BaseModel):
-    """A tool invocation awaiting user confirmation."""
-
+    """
+    A tool invocation awaiting user confirmation.
+    """
     invocation_id: str = Field(
         ...,
         description="Unique ID for this invocation (UUIDv4)",
@@ -76,16 +83,15 @@ class PendingToolInvocation(BaseModel):
     )
 
 
-class GuideAgentConversationState(BaseModel):
+class ChatConversationState(BaseModel):
     """
-    Full state of a guide agent conversation session.
+    Full state of a chat conversation session.
     """
-
-    guide_chat_id: str = Field(
+    chat_id: str = Field(
         ...,
         description="Unique session identifier (UUIDv4)",
     )
-    messages: list[ConversationMessage] = Field(
+    messages: list[ChatMessage] = Field(
         default_factory=list,
         description="Conversation history",
     )
@@ -100,4 +106,49 @@ class GuideAgentConversationState(BaseModel):
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(tz=timezone.utc),
         description="When the session was last updated",
+    )
+
+
+class ChatMessageType(StrEnum):
+    """
+    Types of messages the chat can emit via callback.
+    """
+
+    CHAT_RESPONSE = "chat_response"
+    TOOL_INVOCATION_REQUEST = "tool_invocation_request"
+    TOOL_INVOCATION_RESULT = "tool_invocation_result"
+    ERROR = "error"
+
+
+class ChatMessage(BaseModel):
+    """
+    Message emitted by the guide agent via callback.
+
+    This is the internal message format used by GuideAgent to communicate
+    with its host (e.g., CLI, WebSocket handler in servers repo).
+    """
+
+    type: ChatMessageType = Field(
+        ...,
+        description="The type of message being emitted",
+    )
+    timestamp: datetime = Field(
+        default_factory=datetime.utcnow,
+        description="When the message was created",
+    )
+    content: str | None = Field(
+        default=None,
+        description="Text content for chat responses or error messages",
+    )
+    tool_invocation: PendingToolInvocation | None = Field(
+        default=None,
+        description="Tool invocation details for request/result messages",
+    )
+    tool_result: dict[str, Any] | None = Field(
+        default=None,
+        description="Result data from tool execution",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message if type is ERROR",
     )
