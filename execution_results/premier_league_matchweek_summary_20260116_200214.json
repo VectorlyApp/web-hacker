@@ -1,0 +1,53 @@
+{
+  "success": true,
+  "data": [],
+  "is_base64": false,
+  "content_type": null,
+  "filename": null,
+  "operations_metadata": [
+    {
+      "type": "navigate",
+      "duration_seconds": 2.0024735420010984,
+      "details": {},
+      "error": null
+    },
+    {
+      "type": "fetch",
+      "duration_seconds": 0.3123610420007026,
+      "details": {
+        "request": {
+          "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v2/matches?competition=8&season=2025&matchweek=1&_limit=100",
+          "method": "GET",
+          "headers": {},
+          "body": null
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "headers": {
+            "cache-control": "max-age=5, stale-while-revalidate=120, stale-if-error=86400",
+            "content-type": "application/json"
+          }
+        }
+      },
+      "error": null
+    },
+    {
+      "type": "js_evaluate",
+      "duration_seconds": 0.03553995800029952,
+      "details": {
+        "console_logs": [],
+        "execution_error": null,
+        "storage_error": null
+      },
+      "error": null
+    },
+    {
+      "type": "return",
+      "duration_seconds": 0.08714270801283419,
+      "details": {},
+      "error": null
+    }
+  ],
+  "placeholder_resolution": {}
+}

@@ -4,6 +4,7 @@ Interactive CLI for testing LLMContextManager.
 
 Commands:
   /stats     - Show current context stats (T_current, T_drain, T_max, etc.)
+  /tokens    - Show token usage summary (input/output/cached tokens)
   /messages  - Show all messages in context
   /active    - Show what would be sent to LLM right now
   /summary   - Show the last summary if present
@@ -31,8 +32,8 @@ from rich.markdown import Markdown
 from rich.logging import RichHandler
 from rich import box
 
-from llm_context_manager import LLMContextManager, MessageRole
-from llm_context_manager import summary_logger  # renamed to llm_context_manager logger
+from llm_context_manager_v3 import LLMContextManagerV3, MessageRole
+from llm_context_manager_v3 import summary_logger
 
 # setup summary logger with in-memory handler to capture logs
 class LogCapture(logging.Handler):
@@ -55,23 +56,24 @@ summary_logger.addHandler(log_capture)
 console = Console()
 
 
-def print_stats(manager: LLMContextManager) -> None:
+def print_stats(manager: LLMContextManagerV3) -> None:
     """Print current context manager stats."""
     stats = manager.get_stats()
 
-    # create a visual progress bar for context usage
-    t_current = stats["T_current"]
-    t_drain = stats["T_drain"]
+    # Context tracking (now in TOKENS!)
+    t_current = stats["T_current"]  # This is now tokens
     t_max = stats["T_max"]
     t_target = stats["T_target"]
+    t_chars = stats.get("T_current_chars", 0)
+    calibrated = stats.get("tokens_calibrated", False)
 
     # determine color based on thresholds
     if t_current > t_max:
         color = "red bold"
         status = "OVER MAX - WILL DRAIN"
-    elif t_current > t_drain:
+    elif t_current > t_max * 0.8:  # 80% of max
         color = "yellow"
-        status = "ABOVE DRAIN - SUMMARIZING"
+        status = "APPROACHING MAX"
     elif t_current > t_target:
         color = "cyan"
         status = "NORMAL"
@@ -79,33 +81,48 @@ def print_stats(manager: LLMContextManager) -> None:
         color = "green"
         status = "LOW"
 
-    table = Table(title="Context Manager Stats", box=box.ROUNDED)
+    table = Table(title="Context Manager Stats (V3 - Token-Based)", box=box.ROUNDED)
     table.add_column("Metric", style="bold")
     table.add_column("Value", justify="right")
     table.add_column("Status", justify="center")
 
     # context size row with bar
-    pct_of_max = min(t_current / t_max * 100, 100)
+    pct_of_max = min(t_current / t_max * 100, 100) if t_max > 0 else 0
     bar_width = 30
     filled = int(pct_of_max / 100 * bar_width)
     bar = "█" * filled + "░" * (bar_width - filled)
 
+    # Show calibration status
+    cal_status = "[green]actual[/green]" if calibrated else "[yellow]estimated[/yellow]"
+
     table.add_row(
         "T_current",
-        f"[{color}]{t_current:,}[/{color}]",
+        f"[{color}]{t_current:,} tokens[/{color}]",
         f"[{color}]{bar} {pct_of_max:.1f}%[/{color}]"
     )
-    table.add_row("T_target", f"{t_target:,}", "[dim]after drain target[/dim]")
-    table.add_row("T_drain", f"{t_drain:,}", "[dim]async summary threshold[/dim]")
-    table.add_row("T_max", f"{t_max:,}", "[dim]forced drain threshold[/dim]")
-    table.add_row("T_summary_max", f"{stats['T_summary_max']:,}", "[dim]max summary size[/dim]")
+    table.add_row("", f"[dim]({t_chars:,} chars)[/dim]", cal_status)
+    table.add_row("T_target", f"{t_target:,} tokens", "[dim]target after drain[/dim]")
+    table.add_row("T_max", f"{t_max:,} tokens", "[dim]drain threshold[/dim]")
+    table.add_row("T_summary_max", f"{stats['T_summary_max']:,} tokens", "[dim]max summary size[/dim]")
     table.add_row("", "", "")
     table.add_row("Messages", str(stats["message_count"]), "")
-    table.add_row("Summaries", str(stats["summary_count"]), "")
+    table.add_row("Checkpoints", str(stats.get("checkpoint_count", 0)), "[dim]saved branch points[/dim]")
+    table.add_row("Summary", f"{stats.get('summary_size', 0):,} chars" if stats.get("has_summary") else "None", "")
     table.add_row("Anchor Index", str(stats["current_anchor_idx"] or "None"), "")
     table.add_row("Has Response ID", "✓" if stats["has_response_id"] else "✗",
                   "[green]continuation mode[/green]" if stats["has_response_id"] else "[yellow]fresh context[/yellow]")
-    table.add_row("Summarizing", "⏳" if stats["summarization_in_progress"] else "✗", "")
+
+    # Cumulative token usage section
+    table.add_row("", "", "")
+    table.add_row("[bold]Cumulative Usage[/bold]", "", "")
+    total_input = stats.get("total_input_tokens", 0)
+    total_output = stats.get("total_output_tokens", 0)
+    api_calls = stats.get("api_call_count", 0)
+    avg_input = total_input // api_calls if api_calls > 0 else 0
+
+    table.add_row("Input Tokens", f"{total_input:,}", f"[dim]~{avg_input:,}/call avg[/dim]")
+    table.add_row("Output Tokens", f"{total_output:,}", "")
+    table.add_row("Total Billed", f"{total_input + total_output:,}", f"[dim]{api_calls} API calls[/dim]")
 
     console.print()
     console.print(table)
@@ -113,7 +130,7 @@ def print_stats(manager: LLMContextManager) -> None:
     console.print()
 
 
-def print_messages(manager: LLMContextManager) -> None:
+def print_messages(manager: LLMContextManagerV3) -> None:
     """Print all messages in the conversation."""
     console.print()
     console.print(Panel("[bold]All Messages in History[/bold]", style="blue"))
@@ -145,7 +162,7 @@ def print_messages(manager: LLMContextManager) -> None:
         console.print()
 
 
-def print_active_context(manager: LLMContextManager) -> None:
+def print_active_context(manager: LLMContextManagerV3) -> None:
     """Print what would be sent to the LLM right now."""
     console.print()
     console.print(Panel("[bold]Active Context (what would be sent to LLM)[/bold]", style="yellow"))
@@ -183,39 +200,36 @@ def print_active_context(manager: LLMContextManager) -> None:
     console.print()
 
 
-def print_summary(manager: LLMContextManager) -> None:
-    """Print the last summary."""
+def print_summary(manager: LLMContextManagerV3) -> None:
+    """Print the current summary."""
     console.print()
 
-    if not manager.summaries:
-        console.print(Panel("[dim]No summaries yet[/dim]", title="Last Summary", style="yellow"))
+    if not manager.current_summary:
+        console.print(Panel("[dim]No summary yet[/dim]", title="Current Summary", style="yellow"))
         return
 
-    last_summary = manager.summaries[-1]
-    # escape summary content to prevent Rich from interpreting brackets as markup
-    escaped_summary = escape(last_summary.summary)
+    escaped_summary = escape(manager.current_summary)
     console.print(Panel(
-        f"[bold]Anchor Index:[/bold] {last_summary.anchor_message_idx}\n\n{escaped_summary}",
-        title="Last Summary",
+        f"[bold]Anchor Index:[/bold] {manager.summary_anchor_idx}\n\n{escaped_summary}",
+        title="Current Summary",
         style="yellow"
     ))
     console.print()
 
 
-def print_all_summaries(manager: LLMContextManager) -> None:
-    """Print all summaries."""
+def print_all_summaries(manager: LLMContextManagerV3) -> None:
+    """Print summary (V3 only has one summary at a time)."""
     console.print()
-    console.print(Panel("[bold]All Summaries[/bold]", style="yellow"))
+    console.print(Panel("[bold]Summary (V3 uses single summary)[/bold]", style="yellow"))
 
-    if not manager.summaries:
-        console.print("[dim]No summaries yet[/dim]")
+    if not manager.current_summary:
+        console.print("[dim]No summary yet[/dim]")
         return
 
-    for i, summary in enumerate(manager.summaries):
-        console.print(f"[bold]Summary #{i + 1}[/bold] (anchor @ message {summary.anchor_message_idx})")
-        truncated = summary.summary[:500] + ('...' if len(summary.summary) > 500 else '')
-        console.print(f"[dim]{escape(truncated)}[/dim]")
-        console.print()
+    console.print(f"[bold]Summary[/bold] (covers msgs 1-{manager.summary_anchor_idx})")
+    truncated = manager.current_summary[:500] + ('...' if len(manager.current_summary) > 500 else '')
+    console.print(f"[dim]{escape(truncated)}[/dim]")
+    console.print()
 
 
 def print_logs() -> None:
@@ -250,12 +264,59 @@ def get_clipboard() -> str | None:
         return None
 
 
+def print_tokens(manager: LLMContextManagerV3) -> None:
+    """Print token usage summary."""
+    stats = manager.get_stats()
+    console.print()
+
+    # Cumulative billing tokens
+    total_input = stats.get("total_input_tokens", 0)
+    total_output = stats.get("total_output_tokens", 0)
+    api_calls = stats.get("api_call_count", 0)
+    avg_input = total_input // api_calls if api_calls > 0 else 0
+    avg_output = total_output // api_calls if api_calls > 0 else 0
+
+    # Context size
+    t_current = stats.get("T_current", 0)
+    t_chars = stats.get("T_current_chars", 0)
+    t_max = stats.get("T_max", 0)
+    calibrated = stats.get("tokens_calibrated", False)
+
+    table = Table(title="Token Usage Summary", box=box.ROUNDED)
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+    table.add_column("Details", justify="left")
+
+    # Context section
+    cal_status = "[green]actual[/green]" if calibrated else "[yellow]estimated[/yellow]"
+    pct = (t_current / t_max * 100) if t_max > 0 else 0
+    table.add_row("[bold]Context Window[/bold]", "", "")
+    table.add_row("  Current", f"{t_current:,} tokens", f"{pct:.1f}% of max | {cal_status}")
+    table.add_row("  Chars", f"{t_chars:,}", "[dim]for reference[/dim]")
+    table.add_row("", "", "")
+
+    # Billing section
+    table.add_row("[bold]Cumulative Billing[/bold]", "", "")
+    table.add_row("  Input Tokens", f"{total_input:,}", f"[dim]~{avg_input:,} avg/call[/dim]")
+    table.add_row("  Output Tokens", f"{total_output:,}", f"[dim]~{avg_output:,} avg/call[/dim]")
+    table.add_row("  Total Billed", f"[bold]{total_input + total_output:,}[/bold]", f"[dim]{api_calls} API calls[/dim]")
+    table.add_row("", "", "")
+
+    # Mode
+    mode = "[green]continuation[/green]" if stats.get("has_response_id") else "[yellow]fresh[/yellow]"
+    table.add_row("Mode", mode, "[dim]KV cache reuse[/dim]" if stats.get("has_response_id") else "")
+
+    console.print(table)
+    console.print()
+
+
 def print_help() -> None:
     """Print help."""
     console.print()
     console.print(Panel(
         """[bold]Commands:[/bold]
   [cyan]/stats[/cyan]     - Show current context stats (T_current, T_drain, T_max, etc.)
+  [cyan]/tokens[/cyan]    - Show token usage summary
   [cyan]/messages[/cyan]  - Show all messages in context
   [cyan]/active[/cyan]    - Show what would be sent to LLM right now
   [cyan]/summary[/cyan]   - Show the last summary if present
@@ -281,42 +342,65 @@ def main():
     console.print("[bold blue]═══════════════════════════════════════════════════════════════[/bold blue]")
     console.print()
 
-    # create manager with lower thresholds for easier testing
-    # (summaries start generating after ~5k chars instead of 80k)
-    manager = LLMContextManager(
-        T_max=20_000,        # 20k chars max (force drain)
-        T_drain=5_000,       # 5k start async summarization
-        T_target=8_000,      # 8k target after drain
-        T_summary_max=4_000  # 4k max summary size
+    # create manager with token-based thresholds for easier testing
+    # V3 uses lazy summarization via checkpoint branching
+    # All thresholds are now in TOKENS (not characters)
+    manager = LLMContextManagerV3(
+        T_max=5_000,               # 5k tokens max (triggers drain)
+        T_target=2_000,            # 2k tokens target after drain
+        T_summary_max=1_000,       # 1k tokens max summary size
+        checkpoint_interval=1_000  # save checkpoint every 1k tokens
     )
 
     # start session
-    system_prompt = """You are a helpful AI assistant. Be concise but thorough in your responses.
-You are being used to test a context management system, so feel free to generate longer responses
-when asked to help test the context limits."""
+    system_prompt = """You are a web automation assistant. Your PRIMARY GOAL is to help users create routines that WORK and return nice, clean, structured data.
+
+Key priorities:
+1. Build reliable routines - they must execute successfully and handle edge cases
+2. Extract clean data - return well-structured JSON with consistent field names
+3. Be precise with selectors, URLs, and data extraction logic
+4. Test and validate routines before considering them complete
+
+CRITICAL: You MUST heavily rely on the documentation provided to you! The docs contain essential information about:
+- Routine structure and format
+- Available operations and their parameters
+- Placeholder syntax and usage
+- Best practices and common patterns
+Always consult the docs before making decisions about routine structure or operations.
+
+IMPORTANT: After EVERY routine execution, you MUST carefully review the contents and results of the routine. If something is not correct or the data is incomplete/malformed, you MUST:
+- Identify what went wrong
+- Correct the routine
+- Validate the fix
+- Re-run to confirm it works properly
+
+Never consider a routine complete until you have verified it produces correct, clean output.
+
+When creating routines, focus on robustness and data quality above all else."""
 
     manager.start_session(system_prompt)
 
     console.print("[green]✓ Session started![/green]")
-    console.print(f"[dim]System prompt: {len(system_prompt)} chars[/dim]")
+    console.print(f"[dim]System prompt: {len(system_prompt)} chars (~{len(system_prompt)//4} tokens est)[/dim]")
     console.print()
     print_stats(manager)
     print_help()
 
     while True:
         try:
-            # show mini status in prompt
+            # show mini status in prompt (now in tokens!)
             stats = manager.get_stats()
-            t_pct = stats["T_current"] / stats["T_max"] * 100
+            t_pct = stats["T_current"] / stats["T_max"] * 100 if stats["T_max"] > 0 else 0
+            cal_marker = "" if stats.get("tokens_calibrated", False) else "~"  # ~ means estimated
 
             if t_pct > 100:
                 status_color = "red"
-            elif stats["T_current"] > stats["T_drain"]:
+            elif t_pct > 80:  # approaching max
                 status_color = "yellow"
             else:
                 status_color = "green"
 
-            console.print(f"[dim][{status_color}]{stats['T_current']:,}/{stats['T_max']:,} ({t_pct:.0f}%)[/{status_color}][/dim]", end=" ")
+            console.print(f"[dim][{status_color}]{cal_marker}{stats['T_current']:,}/{stats['T_max']:,} tokens ({t_pct:.0f}%)[/{status_color}][/dim]", end=" ")
             user_input = console.input("[bold green]You>[/bold green] ").strip()
 
             if not user_input:
@@ -331,6 +415,8 @@ when asked to help test the context limits."""
                     break
                 elif cmd == "/stats":
                     print_stats(manager)
+                elif cmd == "/tokens":
+                    print_tokens(manager)
                 elif cmd == "/messages":
                     print_messages(manager)
                 elif cmd == "/active":
@@ -346,7 +432,7 @@ when asked to help test the context limits."""
                     pre_stats = manager.get_stats()
                     manager.force_drain()
                     post_stats = manager.get_stats()
-                    console.print(f"[green]✓ Context drained: {pre_stats['T_current']:,} → {post_stats['T_current']:,} chars[/green]")
+                    console.print(f"[green]✓ Context drained: {pre_stats['T_current']:,} → {post_stats['T_current']:,} tokens[/green]")
                     console.print(f"[dim]Anchor moved to message {post_stats['current_anchor_idx']}[/dim]")
                     print_stats(manager)
                 elif cmd == "/paste":
@@ -394,9 +480,16 @@ when asked to help test the context limits."""
             # show post-call stats delta
             post_stats = manager.get_stats()
             delta = post_stats["T_current"] - pre_stats["T_current"]
+            calibrated = post_stats.get("tokens_calibrated", False)
+            cal_status = "actual" if calibrated else "est"
+
+            # token delta (billed tokens for this call)
+            input_delta = post_stats["total_input_tokens"] - pre_stats.get("total_input_tokens", 0)
+            output_delta = post_stats["total_output_tokens"] - pre_stats.get("total_output_tokens", 0)
 
             console.print(f"[dim]─────────────────────────────────────────────────────[/dim]")
-            console.print(f"[dim]Context: {pre_stats['T_current']:,} → {post_stats['T_current']:,} (+{delta:,} chars)[/dim]")
+            console.print(f"[dim]Context: {pre_stats['T_current']:,} → {post_stats['T_current']:,} tokens (+{delta:,}) [{cal_status}][/dim]")
+            console.print(f"[dim]This call: in={input_delta:,} out={output_delta:,}[/dim]")
 
             if post_stats["summarization_in_progress"]:
                 console.print("[yellow]⏳ Async summarization in progress...[/yellow]")

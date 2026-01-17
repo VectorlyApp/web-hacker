@@ -1,0 +1,391 @@
+{
+  "success": true,
+  "data": {
+    "pagination": {
+      "_limit": 100,
+      "_prev": null,
+      "_next": null
+    },
+    "data": [
+      {
+        "phase": "1",
+        "kickoffTimezone": "BST",
+        "competitionId": "8",
+        "period": "FullTime",
+        "matchWeek": 1,
+        "kickoff": "2025-08-15 20:00:00",
+        "awayTeam": {
+          "score": 2,
+          "name": "Bournemouth",
+          "id": "91",
+          "halfTimeScore": 0,
+          "shortName": "Bournemouth",
+          "abbr": "BOU",
+          "redCards": 0
+        },
+        "competition": "Premier League",
+        "clock": "97",
+        "kickoffTimezoneString": "Europe/London",
+        "homeTeam": {
+          "score": 4,
+          "name": "Liverpool",
+          "id": "14",
+          "halfTimeScore": 1,
+          "shortName": "Liverpool",
+          "abbr": "LIV",
+          "redCards": 0
+        },
+        "season": "2025",
+        "ground": "Anfield, Liverpool",
+        "resultType": "NormalResult",
+        "matchId": "2561895",
+        "attendance": 60315
+      },
+      {
+        "phase": "1",
+        "kickoffTimezone": "BST",
+        "competitionId": "8",
+        "period": "FullTime",
+        "matchWeek": 1,
+        "kickoff": "2025-08-16 12:30:00",
+        "awayTeam": {
+          "score": 0,
+          "name": "Newcastle United",
+          "id": "4",
+          "halfTimeScore": 0,
+          "shortName": "Newcastle",
+          "abbr": "NEW",
+          "redCards": 0
+        },
+        "competition": "Premier League",
+        "clock": "97",
+        "kickoffTimezoneString": "Europe/London",
+        "homeTeam": {
+          "score": 0,
+          "name": "Aston Villa",
+          "id": "7",
+          "halfTimeScore": 0,
+          "shortName": "Aston Villa",
+          "abbr": "AVL",
+          "redCards": 1
+        },
+        "season": "2025",
+        "ground": "Villa Park, Birmingham",
+        "resultType": "NormalResult",
+        "matchId": "2561896",
+        "attendance": 42526
+      },
+      {
+        "phase": "1",
+        "kickoffTimezone": "BST",
+        "competitionId": "8",
+        "period": "FullTime",
+        "matchWeek": 1,
+        "kickoff": "2025-08-16 15:00:00",
+        "awayTeam": {
+          "score": 1,
+          "name": "Fulham",
+          "id": "54",
+          "halfTimeScore": 0,
+          "shortName": "Fulham",
+          "abbr": "FUL",
+          "redCards": 0
+        },
+        "competition": "Premier League",
+        "clock": "98",
+        "kickoffTimezoneString": "Europe/London",
+        "homeTeam": {
+          "score": 1,
+          "name": "Brighton and Hove Albion",
+          "id": "36",
+          "halfTimeScore": 0,
+          "shortName": "Brighton",
+          "abbr": "BHA",
+          "redCards": 0
+        },
+        "season": "2025",
+        "ground": "American Express Stadium, Falmer",
+        "resultType": "NormalResult",
+        "matchId": "2561897",
+        "attendance": 31478
+      },
+      {
+        "phase": "1",
+        "kickoffTimezone": "BST",
+        "competitionId": "8",
+        "period": "FullTime",
+        "matchWeek": 1,
+        "kickoff": "2025-08-17 14:00:00",
+        "awayTeam": {
+          "score": 1,
+          "name": "Brentford",
+          "id": "94",
+          "halfTimeScore": 0,
+          "shortName": "Brentford",
+          "abbr": "BRE",
+          "redCards": 0
+        },
+        "competition": "Premier League",
+        "clock": "96",
+        "kickoffTimezoneString": "Europe/London",
+        "homeTeam": {
+          "score": 3,
+          "name": "Nottingham Forest",
+          "id": "17",
+          "halfTimeScore": 3,
+          "shortName": "Nott'm Forest",
+          "abbr": "NFO",
+          "redCards": 0
+        },
+        "season": "2025",
+        "ground": "The City Ground, Nottingham",
+        "resultType": "NormalResult",
+        "matchId": "2561898",
+        "attendance": 29949
+      },
+      {
+        "phase": "1",
+        "kickoffTimezone": "BST",
+        "competitionId": "8",
+        "period": "FullTime",
+        "matchWeek": 1,
+        "kickoff": "2025-08-16 15:00:00",
+        "awayTeam": {
+          "score": 0,
+          "name": "West Ham United",
+          "id": "21",
+          "halfTimeScore": 0,
+          "shortName": "West Ham",
+          "abbr": "WHU",
+          "redCards": 0
+        },
+        "competition": "Premier League",
+        "clock": "98",
+        "kickoffTimezoneString": "Europe/London",
+        "homeTeam": {
+          "score": 3,
+          "name": "Sunderland",
+          "id": "56",
+          "halfTimeScore": 0,
+          "shortName": "Sunderland",
+          "abbr": "SUN",
+          "redCards": 0
+        },
+        "season": "2025",
+        "ground": "Stadium of Light, Sunderland",
+        "resultType": "NormalResult",
+        "matchId": "2561899",
+        "attendance": 46233
+      },
+      {
+        "phase": "1",
+        "kickoffTimezone": "BST",
+        "competitionId": "8",
+        "period": "FullTime",
+        "matchWeek": 1,
+        "kickoff": "2025-08-16 15:00:00",
+        "awayTeam": {
+          "score": 0,
+          "name": "Burnley",
+          "id": "90",
+          "halfTimeScore": 0,
+          "shortName": "Burnley",
+          "abbr": "BUR",
+          "redCards": 0
+        },
+        "competition": "Premier League",
+        "clock": "94",
+        "kickoffTimezoneString": "Europe/London",
+        "homeTeam": {
+          "score": 3,
+          "name": "Tottenham Hotspur",
+          "id": "6",
+          "halfTimeScore": 1,
+          "shortName": "Spurs",
+          "abbr": "TOT",
+          "redCards": 0
+        },
+        "season": "2025",
+        "ground": "Tottenham Hotspur Stadium, London",
+        "resultType": "NormalResult",
+        "matchId": "2561900",
+        "attendance": 61077
+      },
+      {
+        "phase": "1",
+        "kickoffTimezone": "BST",
+        "competitionId": "8",
+        "period": "FullTime",
+        "matchWeek": 1,
+        "kickoff": "2025-08-16 17:30:00",
+        "awayTeam": {
+          "score": 4,
+          "name": "Manchester City",
+          "id": "43",
+          "halfTimeScore": 2,
+          "shortName": "Man City",
+          "abbr": "MCI",
+          "redCards": 0
+        },
+        "competition": "Premier League",
+        "clock": "99",
+        "kickoffTimezoneString": "Europe/London",
+        "homeTeam": {
+          "score": 0,
+          "name": "Wolverhampton Wanderers",
+          "id": "39",
+          "halfTimeScore": 0,
+          "shortName": "Wolves",
+          "abbr": "WOL",
+          "redCards": 0
+        },
+        "season": "2025",
+        "ground": "Molineux Stadium, Wolverhampton",
+        "resultType": "NormalResult",
+        "matchId": "2561901",
+        "attendance": 31118
+      },
+      {
+        "phase": "1",
+        "kickoffTimezone": "BST",
+        "competitionId": "8",
+        "period": "FullTime",
+        "matchWeek": 1,
+        "kickoff": "2025-08-17 14:00:00",
+        "awayTeam": {
+          "score": 0,
+          "name": "Crystal Palace",
+          "id": "31",
+          "halfTimeScore": 0,
+          "shortName": "Crystal Palace",
+          "abbr": "CRY",
+          "redCards": 0
+        },
+        "competition": "Premier League",
+        "clock": "97",
+        "kickoffTimezoneString": "Europe/London",
+        "homeTeam": {
+          "score": 0,
+          "name": "Chelsea",
+          "id": "8",
+          "halfTimeScore": 0,
+          "shortName": "Chelsea",
+          "abbr": "CHE",
+          "redCards": 0
+        },
+        "season": "2025",
+        "ground": "Stamford Bridge, London",
+        "resultType": "NormalResult",
+        "matchId": "2561902",
+        "attendance": 39678
+      },
+      {
+        "phase": "1",
+        "kickoffTimezone": "BST",
+        "competitionId": "8",
+        "period": "FullTime",
+        "matchWeek": 1,
+        "kickoff": "2025-08-17 16:30:00",
+        "awayTeam": {
+          "score": 1,
+          "name": "Arsenal",
+          "id": "3",
+          "halfTimeScore": 1,
+          "shortName": "Arsenal",
+          "abbr": "ARS",
+          "redCards": 0
+        },
+        "competition": "Premier League",
+        "clock": "97",
+        "kickoffTimezoneString": "Europe/London",
+        "homeTeam": {
+          "score": 0,
+          "name": "Manchester United",
+          "id": "1",
+          "halfTimeScore": 0,
+          "shortName": "Man Utd",
+          "abbr": "MUN",
+          "redCards": 0
+        },
+        "season": "2025",
+        "ground": "Old Trafford, Manchester",
+        "resultType": "NormalResult",
+        "matchId": "2561903",
+        "attendance": 73475
+      },
+      {
+        "phase": "1",
+        "kickoffTimezone": "BST",
+        "competitionId": "8",
+        "period": "FullTime",
+        "matchWeek": 1,
+        "kickoff": "2025-08-18 20:00:00",
+        "awayTeam": {
+          "score": 0,
+          "name": "Everton",
+          "id": "11",
+          "halfTimeScore": 0,
+          "shortName": "Everton",
+          "abbr": "EVE",
+          "redCards": 0
+        },
+        "competition": "Premier League",
+        "clock": "98",
+        "kickoffTimezoneString": "Europe/London",
+        "homeTeam": {
+          "score": 1,
+          "name": "Leeds United",
+          "id": "2",
+          "halfTimeScore": 0,
+          "shortName": "Leeds",
+          "abbr": "LEE",
+          "redCards": 0
+        },
+        "season": "2025",
+        "ground": "Elland Road, Leeds",
+        "resultType": "NormalResult",
+        "matchId": "2561904",
+        "attendance": 36820
+      }
+    ]
+  },
+  "is_base64": false,
+  "content_type": null,
+  "filename": null,
+  "operations_metadata": [
+    {
+      "type": "navigate",
+      "duration_seconds": 2.0068761250004172,
+      "details": {},
+      "error": null
+    },
+    {
+      "type": "fetch",
+      "duration_seconds": 0.3426012499985518,
+      "details": {
+        "request": {
+          "url": "https://sdp-prem-prod.premier-league-prod.pulselive.com/api/v2/matches?competition=8&season=2025&matchweek=1&_limit=100",
+          "method": "GET",
+          "headers": {},
+          "body": null
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "headers": {
+            "cache-control": "max-age=5, stale-while-revalidate=120, stale-if-error=86400",
+            "content-type": "application/json"
+          }
+        }
+      },
+      "error": null
+    },
+    {
+      "type": "return",
+      "duration_seconds": 0.05433379199530464,
+      "details": {},
+      "error": null
+    }
+  ],
+  "placeholder_resolution": {}
+}

@@ -7,13 +7,14 @@ Agent for discovering routines from the network transactions.
 import json
 from uuid import uuid4
 import os
+from pathlib import Path
 from typing import Callable
 
 from openai import OpenAI
 from pydantic import BaseModel, Field, ConfigDict
 from toon import encode
 
-from llm_context_manager import LLMContextManager
+from llm_context_manager_v3 import LLMContextManagerV3
 from web_hacker.routine_discovery.context_manager import ContextManager
 from web_hacker.utils.llm_utils import collect_text_from_response, manual_llm_parse_text_to_model
 from web_hacker.data_models.routine_discovery.llm_responses import (
@@ -45,8 +46,14 @@ class RoutineDiscoveryAgent(BaseModel):
     task: str
     emit_message_callable: Callable[[RoutineDiscoveryMessage], None]
     llm_model: str = Field(default="gpt-5.1")
-    llm_context: LLMContextManager = Field(default_factory=LLMContextManager)
+    llm_context: LLMContextManagerV3 | None = Field(default=None)
     output_dir: str | None = Field(default=None)
+
+    def model_post_init(self, __context) -> None:
+        """Initialize llm_context with summaries_dir if output_dir is set."""
+        if self.llm_context is None:
+            summaries_dir = Path(self.output_dir) / "summaries" if self.output_dir else None
+            self.llm_context = LLMContextManagerV3(summaries_dir=summaries_dir)
     tools: list[dict] = Field(default_factory=list)
     n_transaction_identification_attempts: int = Field(default=3)
     current_transaction_identification_attempt: int = Field(default=1)
