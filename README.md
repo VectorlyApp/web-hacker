@@ -28,7 +28,7 @@ Welcome to Vectorly's Web Hacker... **No API? No Problem!**
 
 ## What is a *Routine*?
 
-> A **Routine** is a portable automation recipe that captures how to perform a specific task in any web app.
+> A [**Routine**](https://vectorly.app/docs/routines/overview) is a portable automation recipe that captures how to perform a specific task in any web app.
 
 Define once. Reuse everywhere. Automate anything you can do in a browser.
 
