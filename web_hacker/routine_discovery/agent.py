@@ -58,12 +58,16 @@ class RoutineDiscoveryAgent(BaseModel):
     timeout: int = Field(default=600)
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    SYSTEM_PROMPT_IDENTIFY_TRANSACTIONS: str = """
-    You are a helpful assistant that is an expert in parsing network traffic.
-    You need to identify one or more network transactions that directly correspond to the user's requested task.
-    You have access to vectorstore that contains network transactions and storage data
-    (cookies, localStorage, sessionStorage, etc.).
-    """
+    DATA_STORE_PROMPT: str = """
+You have access to the following data and you must refer to it when searching for transactions and resolving variables!
+It is essential that you use this data, documentation, and code:
+{data_store_prompt}
+"""
+
+    SYSTEM_PROMPT: str = """You are a helpful assistant that is an expert in parsing network traffic.
+You need to identify one or more network transactions that directly correspond to the user's requested task.
+You have access to vectorstore that contains network transactions and storage data
+(cookies, localStorage, sessionStorage, etc.)."""
 
     PLACEHOLDER_INSTRUCTIONS: str = (
         "PLACEHOLDER SYNTAX:\n"
@@ -84,6 +88,50 @@ class RoutineDiscoveryAgent(BaseModel):
         '8. Cookie:           "sid": \\"{{cookie:session_id}}\\"'
         'IMPORTANT: YOU MUST ENSURE THAT EACH PLACEHOLDER IS SURROUNDED BY QUOTES OR ESCAPED QUOTES!'
     )
+
+    def _get_system_prompt(self) -> str:
+        """Get system prompt with data store context if available."""
+        system_prompt = self.SYSTEM_PROMPT
+        if self.data_store:
+            data_store_prompt = self.DATA_STORE_PROMPT.format(
+                data_store_prompt=self.data_store.generate_data_store_prompt()
+            )
+            if data_store_prompt:
+                system_prompt = f"{system_prompt}\n\n{data_store_prompt}"
+        return system_prompt
+
+    def _build_filtered_tools(self, uuid_filter: str) -> list[dict]:
+        """
+        Build file_search tools with UUID filter for CDP captures and unfiltered for other vectorstores.
+
+        Args:
+            uuid_filter: The UUID to filter CDP captures by.
+
+        Returns:
+            List of file_search tool definitions using all available vectorstores.
+        """
+        tools = []
+
+        # Add filtered CDP captures vectorstore
+        if self.data_store.cdp_captures_vectorstore_id:
+            tools.append({
+                "type": "file_search",
+                "vector_store_ids": [self.data_store.cdp_captures_vectorstore_id],
+                "filters": {
+                    "type": "eq",
+                    "key": "uuid",
+                    "value": [uuid_filter]
+                }
+            })
+
+        # Add other vectorstores (documentation, etc.) without filters
+        if self.data_store.documentation_vectorstore_id:
+            tools.append({
+                "type": "file_search",
+                "vector_store_ids": [self.data_store.documentation_vectorstore_id],
+            })
+
+        return tools
 
     def _save_to_output_dir(self, relative_path: str, data: dict | list | str) -> None:
         """Save data to output_dir if it is specified."""
@@ -153,11 +201,7 @@ class RoutineDiscoveryAgent(BaseModel):
         ]
 
         # add the system prompt to the message history (including data store context)
-        system_prompt = self.SYSTEM_PROMPT_IDENTIFY_TRANSACTIONS
-        data_store_prompt = self.data_store.generate_data_store_prompt()
-        if data_store_prompt:
-            system_prompt = f"{system_prompt}\n\n{data_store_prompt}"
-        self._add_to_message_history("system", system_prompt)
+        self._add_to_message_history("system", self._get_system_prompt())
 
         # add the user prompt to the message history
         self._add_to_message_history("user", f"Task description: {self.task}")
@@ -391,17 +435,8 @@ class RoutineDiscoveryAgent(BaseModel):
         )
 
         # temporarily update the tools to specifically search through these transactions
-        tools = [
-            {
-                "type": "file_search",
-                "vector_store_ids": [self.data_store.cdp_captures_vectorstore_id],
-                "filters": {
-                    "type": "eq",
-                    "key": "uuid",
-                    "value": [metadata["uuid"]]
-                }
-            }
-        ]
+        # Use filtered CDP captures + all other vectorstores (unfiltered)
+        tools = self._build_filtered_tools(uuid_filter=metadata["uuid"])
         
         # update the message history with request to confirm the identified transaction
         message = (
@@ -561,17 +596,8 @@ class RoutineDiscoveryAgent(BaseModel):
             self._add_to_message_history("user", message)
 
             # custom tools to force the LLM to look at the newly added transactions to the vectorstore
-            tools = [
-                {
-                    "type": "file_search",
-                    "vector_store_ids": [self.data_store.cdp_captures_vectorstore_id],
-                    "filters": {
-                        "type": "eq",
-                        "key": "uuid",
-                        "value": [uuid]
-                    }
-                }
-            ]
+            # Use filtered CDP captures + all other vectorstores (unfiltered)
+            tools = self._build_filtered_tools(uuid_filter=uuid)
             
             # call to the LLM API for resolution of the variable
             response = self.client.responses.parse(

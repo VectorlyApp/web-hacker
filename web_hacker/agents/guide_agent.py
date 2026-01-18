@@ -211,9 +211,9 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
         """Get system prompt with data store context if available."""
         system_prompt = self.SYSTEM_PROMPT
         if self._data_store:
-            context = self._data_store.generate_data_store_prompt()
-            if context:
-                system_prompt = f"{system_prompt}\n\n{context}"
+            data_store_prompt = self.DATA_STORE_PROMPT.format(data_store_prompt=self._data_store.generate_data_store_prompt())
+            if data_store_prompt:
+                system_prompt = f"{system_prompt}\n\n{data_store_prompt}"
         return system_prompt
 
     def _register_tools(self) -> None:

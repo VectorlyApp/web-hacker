@@ -13,14 +13,21 @@ from web_hacker.data_models.routine.routine import Routine
 
 def validate_routine(routine_dict: dict) -> dict:
     """
-    Validates a routine dictionary against the Routine schema. \
-YOU MUST CONSTRUCT AND PASS THE COMPLETE routine JSON object as the routine_dict argument - \
-do NOT call this with empty arguments {}. \
-The routine_dict must be a JSON object containing: "name" (string), "description" (string), \
-"parameters" (array of parameter definitions with name, description, type, required fields), \
-and "operations" (array of operation definitions). \
-WORKFLOW: First construct the complete routine JSON in your response, then call this tool with that object. \
-If validation fails, read the error, fix the issues, and retry up to 3 times until it passes.
+    Validates a routine dictionary against the Routine schema.
+
+    IMPORTANT: You MUST construct and pass the COMPLETE routine JSON object as the
+    routine_dict argument. Do NOT call this with empty arguments {}.
+
+    The routine_dict must be a JSON object containing:
+    - "name" (string): The name of the routine
+    - "description" (string): Description of what the routine does
+    - "parameters" (array): Parameter definitions with name, description, type, required fields
+    - "operations" (array): Operation definitions
+
+    WORKFLOW:
+    1. First construct the complete routine JSON in your response
+    2. Then call this tool with that object
+    3. If validation fails, read the error, fix the issues, and retry up to 3 times
 
     Args:
         routine_dict: The complete routine JSON object with name, description, parameters, and operations

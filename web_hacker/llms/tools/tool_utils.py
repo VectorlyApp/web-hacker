@@ -12,26 +12,35 @@ from pydantic import TypeAdapter
 
 def extract_description_from_docstring(docstring: str | None) -> str:
     """
-    Extract the first paragraph from a docstring as the description.
+    Extract the full description from a docstring (everything before Args/Returns/etc).
 
     Args:
         docstring: The function's docstring (func.__doc__)
 
     Returns:
-        The first paragraph of the docstring, or empty string if none.
+        The description portion of the docstring, or empty string if none.
     """
     if not docstring:
         return ""
 
-    # split on double newlines to get first paragraph
-    paragraphs = docstring.strip().split("\n\n")
-    if not paragraphs:
-        return ""
+    # Find where the Args/Returns/Raises/Yields section starts
+    section_markers = ("Args:", "Returns:", "Raises:", "Yields:", "Example:", "Examples:", "Note:", "Notes:")
+    lines = docstring.strip().split("\n")
 
-    # clean up the first paragraph (remove leading/trailing whitespace from each line)
-    first_para = paragraphs[0]
-    lines = [line.strip() for line in first_para.split("\n")]
-    return " ".join(lines)
+    description_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        # Stop if we hit a section marker
+        if any(stripped.startswith(marker) for marker in section_markers):
+            break
+        description_lines.append(stripped)
+
+    # Join lines, collapse multiple spaces, and strip trailing whitespace
+    description = " ".join(description_lines)
+    # Collapse multiple spaces into single space
+    while "  " in description:
+        description = description.replace("  ", " ")
+    return description.strip()
 
 
 def _parse_args_from_docstring(docstring: str | None) -> dict[str, str]:
