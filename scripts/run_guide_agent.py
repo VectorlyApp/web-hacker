@@ -25,6 +25,9 @@ from pathlib import Path
 from typing import Any
 
 from openai import OpenAI
+
+# Package root for code_dirs (scripts/ is sibling to web_hacker/)
+WEB_HACKER_PACKAGE_ROOT = Path(__file__).resolve().parent.parent / "web_hacker"
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
@@ -803,7 +806,10 @@ def main() -> None:
         data_store_kwargs: dict[str, Any] = {
             "client": openai_client,
             "documentation_dirs": [args.docs_dir],
-            "code_dirs": ["./web_hacker/data_models"],
+            "code_dirs": [
+                str(WEB_HACKER_PACKAGE_ROOT / "data_models"),
+                str(WEB_HACKER_PACKAGE_ROOT / "utils"),
+            ],
         }
 
         # Add CDP captures paths if provided
