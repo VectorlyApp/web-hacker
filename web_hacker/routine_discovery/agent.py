@@ -129,7 +129,7 @@ class RoutineDiscoveryAgent(BaseModel):
             Routine: The discovered and productionized routine.
         """
         # validate the data store
-        assert self.data_store.vectorstore_id is not None, "Vectorstore ID is not set"
+        assert self.data_store.cdp_captures_vectorstore_id is not None, "Vectorstore ID is not set"
 
         # Push initial message
         self.emit_message_callable(RoutineDiscoveryMessage(
@@ -141,7 +141,7 @@ class RoutineDiscoveryAgent(BaseModel):
         self.tools = [
             {
                 "type": "file_search",
-                "vector_store_ids": [self.data_store.vectorstore_id],
+                "vector_store_ids": [self.data_store.cdp_captures_vectorstore_id],
             }
         ]
 
@@ -383,7 +383,7 @@ class RoutineDiscoveryAgent(BaseModel):
         tools = [
             {
                 "type": "file_search",
-                "vector_store_ids": [self.data_store.vectorstore_id],
+                "vector_store_ids": [self.data_store.cdp_captures_vectorstore_id],
                 "filters": {
                     "type": "eq",
                     "key": "uuid",
@@ -553,7 +553,7 @@ class RoutineDiscoveryAgent(BaseModel):
             tools = [
                 {
                     "type": "file_search",
-                    "vector_store_ids": [self.data_store.vectorstore_id],
+                    "vector_store_ids": [self.data_store.cdp_captures_vectorstore_id],
                     "filters": {
                         "type": "eq",
                         "key": "uuid",

@@ -5,10 +5,10 @@ Data store abstractions and utilities for routine discovery.
 """
 
 import json
-import os
 import shutil
 import time
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -17,13 +17,18 @@ from web_hacker.utils.data_utils import get_text_from_html
 
 
 class DiscoveryDataStore(BaseModel, ABC):
-    """Abstract base class for managing context data."""
+    """Abstract base class for managing discovery data."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @abstractmethod
-    def make_vectorstore(self) -> None:
-        """Make a vectorstore from the context."""
+    def make_cdp_captures_vectorstore(self) -> None:
+        """Make a vectorstore from the CDP captures."""
+        pass
+    
+    @abstractmethod
+    def make_documentation_vectorstore(self) -> None:
+        """Make a vectorstore from the documentation."""
         pass
 
     @abstractmethod
@@ -79,71 +84,89 @@ class DiscoveryDataStore(BaseModel, ABC):
 
 class LocalDiscoveryDataStore(DiscoveryDataStore):
 
+    # openai client for vector store management
     client: OpenAI
+    
+    # cdp captures related fields
+    cdp_captures_vectorstore_id: str | None = None
     tmp_dir: str
     transactions_dir: str
     consolidated_transactions_path: str
     storage_jsonl_path: str
     window_properties_path: str
-    vectorstore_id: str | None = None
-    supported_file_extensions: list[str] = Field(default_factory=lambda: [
+    cached_transaction_ids: list[str] | None = Field(default=None, exclude=True)
+    uploaded_transaction_ids: set[str] = Field(default_factory=set, exclude=True)
+    transaction_response_supported_file_extensions: list[str] = Field(default_factory=lambda: [
         ".txt",
         ".json",
         ".html",
         ".xml",
     ])
-    cached_transaction_ids: list[str] | None = Field(default=None, exclude=True)
-    uploaded_transaction_ids: set[str] = Field(default_factory=set, exclude=True)
+    
+    # documentation and code related fields (both go into same vectorstore)
+    documentation_vectorstore_id: str | None = None
+    documentation_dirs: list[str] = Field(default_factory=list)
+    code_dirs: list[str] = Field(default_factory=list)
+    code_file_extensions: list[str] = Field(default_factory=lambda: [
+        ".py", ".js", ".ts", ".jsx", ".tsx", ".json", ".yaml", ".yml",
+        ".md", ".txt", ".html", ".css", ".scss", ".sql", ".sh", ".bash",
+    ])
+
+    # Cache for uploaded documentation files info (for prompt generation)
+    uploaded_docs_info: list[dict] = Field(default_factory=list, exclude=True)
+    uploaded_code_info: list[dict] = Field(default_factory=list, exclude=True)
 
     @field_validator('transactions_dir', 'consolidated_transactions_path', 'storage_jsonl_path', 'window_properties_path')
     @classmethod
     def validate_paths(cls, v: str) -> str:
-        if not os.path.exists(v):
+        if not Path(v).exists():
             raise ValueError(f"Path {v} does not exist")
         return v
     
     
-    def make_vectorstore(self) -> None:
-        """Make a vectorstore from the context."""
+    def make_cdp_captures_vectorstore(self) -> None:
+        """Make a vectorstore from the CDP captures."""
+        tmp_path = Path(self.tmp_dir)
+        tmp_path.mkdir(parents=True, exist_ok=True)
 
-        # make the tmp directory
-        os.makedirs(self.tmp_dir, exist_ok=True)
+        if self.cdp_captures_vectorstore_id is not None:
+            raise ValueError(f"Vectorstore ID already exists: {self.cdp_captures_vectorstore_id}")
 
-        # ensure no vectorstore for this context already exists
-        if self.vectorstore_id is not None:
-            raise ValueError(f"Vectorstore ID is already exists: {self.vectorstore_id}")
-
-        # make the vectorstore
         vs = self.client.vector_stores.create(
             name=f"api-extraction-context-{int(time.time())}"
         )
+        self.cdp_captures_vectorstore_id = vs.id
 
-        # save the vectorstore id
-        self.vectorstore_id = vs.id
+        # Upload consolidated transactions
+        self._upload_file_to_vectorstore(
+            self.cdp_captures_vectorstore_id,
+            self.consolidated_transactions_path,
+            {"filename": "consolidated_transactions.json"}
+        )
 
-        # upload the transactions to the vectorstore using add_file_to_vectorstore method
-        self.add_file_to_vectorstore(self.consolidated_transactions_path, {"filename": "consolidated_transactions.json"})
-
-        # convert jsonl to json (jsonl not supported by openai)
+        # Convert jsonl to json (jsonl not supported by openai)
         storage_data = []
-        with open(self.storage_jsonl_path, mode="r", encoding="utf-8") as storage_jsonl_file:
-            for line in storage_jsonl_file:
-                obj = json.loads(line)
-                storage_data.append(obj)
+        with open(self.storage_jsonl_path, mode="r", encoding="utf-8") as f:
+            for line in f:
+                storage_data.append(json.loads(line))
 
-        # create a single storage.json file
-        storage_file_path = os.path.join(self.tmp_dir, "storage.json")
-        with open(storage_file_path, mode="w", encoding="utf-8") as f:
-            json.dump(storage_data, f, ensure_ascii=False, indent=2)
+        storage_file_path = tmp_path / "storage.json"
+        storage_file_path.write_text(json.dumps(storage_data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-        # upload the storage to the vectorstore using add_file_to_vectorstore method
-        self.add_file_to_vectorstore(storage_file_path, {"filename": "storage.json"})
-        
-        # upload the window properties to the vectorstore using add_file_to_vectorstore method
-        self.add_file_to_vectorstore(self.window_properties_path, {"filename": "window_properties.json"})
+        self._upload_file_to_vectorstore(
+            self.cdp_captures_vectorstore_id,
+            str(storage_file_path),
+            {"filename": "storage.json"}
+        )
 
-        # delete the tmp directory
-        shutil.rmtree(self.tmp_dir)
+        # Upload window properties
+        self._upload_file_to_vectorstore(
+            self.cdp_captures_vectorstore_id,
+            self.window_properties_path,
+            {"filename": "window_properties.json"}
+        )
+
+        shutil.rmtree(tmp_path)
 
 
     def get_all_transaction_ids(self) -> list[str]:
@@ -153,13 +176,13 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         """
         if self.cached_transaction_ids is not None:
             return self.cached_transaction_ids
-        
-        all_transaction_ids = os.listdir(self.transactions_dir)
-        supported_transaction_ids = []
-        for transaction_id in all_transaction_ids:
-            if self.get_response_body_file_extension(transaction_id) in self.supported_file_extensions:
-                supported_transaction_ids.append(transaction_id)
-        
+
+        transactions_path = Path(self.transactions_dir)
+        supported_transaction_ids = [
+            item.name for item in transactions_path.iterdir()
+            if item.is_dir() and self.get_response_body_file_extension(item.name) in self.transaction_response_supported_file_extensions
+        ]
+
         self.cached_transaction_ids = supported_transaction_ids
         return supported_transaction_ids
 
@@ -167,65 +190,62 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
     def get_transaction_by_id(self, transaction_id: str, clean_response_body: bool = False) -> dict:
         """
         Get a transaction by id from the data store.
-        {
-            "request": ...
-            "response": ...
-            "response_body": ...
-        }
+        Returns: {"request": ..., "response": ..., "response_body": ...}
         """
-
+        transaction_path = Path(self.transactions_dir) / transaction_id
         result = {}
 
+        # Load request
+        request_path = transaction_path / "request.json"
         try:
-            with open(os.path.join(self.transactions_dir, transaction_id, "request.json"), mode="r") as f:
-                result["request"] = json.load(f)
+            result["request"] = json.loads(request_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, FileNotFoundError):
             result["request"] = f"No request found for transaction {transaction_id}"
 
+        # Load response
+        response_path = transaction_path / "response.json"
         try:
-            with open(os.path.join(self.transactions_dir, transaction_id, "response.json"), mode="r") as f:
-                result["response"] = json.load(f)
+            result["response"] = json.loads(response_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, FileNotFoundError):
             result["response"] = f"No response found for transaction {transaction_id}"
 
-        # Get the response body file extension to determine how to read it
+        # Load response body
         response_body_extension = self.get_response_body_file_extension(transaction_id)
-        
         if response_body_extension is None:
             result["response_body"] = f"No response body found for transaction {transaction_id}"
-            
         else:
-            response_body_path = os.path.join(self.transactions_dir, transaction_id, f"response_body{response_body_extension}")
-            # If it's a JSON file, try to parse as JSON; otherwise read as text
+            response_body_path = transaction_path / f"response_body{response_body_extension}"
             if response_body_extension == ".json":
                 try:
-                    with open(response_body_path, mode="r", encoding="utf-8") as f:
-                        result["response_body"] = json.load(f)
+                    result["response_body"] = json.loads(response_body_path.read_text(encoding="utf-8"))
                 except json.JSONDecodeError:
-                    # Fallback to text if JSON parsing fails
-                    with open(response_body_path, mode="r", encoding='utf-8', errors='replace') as f:
-                        result["response_body"] = f.read()
+                    result["response_body"] = response_body_path.read_text(encoding="utf-8", errors="replace")
             else:
-                # Read as text for .txt, .js, .html, .xml, etc.
-                with open(response_body_path, mode="r", encoding='utf-8', errors='replace') as f:
-                    result["response_body"] = f.read()
-                    
-                    # sanitize the response body if it's an html file and clean_response_body is True
-                    if response_body_extension == ".html" and clean_response_body:
-                        result["response_body"] = get_text_from_html(result["response_body"])
+                result["response_body"] = response_body_path.read_text(encoding="utf-8", errors="replace")
+                if response_body_extension == ".html" and clean_response_body:
+                    result["response_body"] = get_text_from_html(result["response_body"])
+
         return result
 
     def clean_up(self) -> None:
         """
-        Clean up the data store resources.
+        Clean up all data store resources (CDP captures and documentation vectorstores).
         """
-        if self.vectorstore_id is None:
-            raise ValueError("Vectorstore ID is not set")
-        try:
-            self.client.vector_stores.delete(vector_store_id=self.vectorstore_id)
-        except Exception as e:
-            raise ValueError(f"Failed to delete vectorstore: {e}")
-        self.vectorstore_id = None
+        # Clean up CDP captures vectorstore if set
+        if self.cdp_captures_vectorstore_id is not None:
+            try:
+                self.client.vector_stores.delete(vector_store_id=self.cdp_captures_vectorstore_id)
+            except Exception as e:
+                raise ValueError(f"Failed to delete CDP captures vectorstore: {e}")
+            self.cdp_captures_vectorstore_id = None
+
+        # Clean up documentation vectorstore if set
+        if self.documentation_vectorstore_id is not None:
+            try:
+                self.client.vector_stores.delete(vector_store_id=self.documentation_vectorstore_id)
+            except Exception as e:
+                raise ValueError(f"Failed to delete documentation vectorstore: {e}")
+            self.documentation_vectorstore_id = None
 
 
     def add_transaction_to_vectorstore(self, transaction_id: str, metadata: dict) -> None:
@@ -235,61 +255,64 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
             transaction_id: ID of the transaction to add
             metadata: Metadata to attach to the transaction file
         """
-        if self.vectorstore_id is None:
+        if self.cdp_captures_vectorstore_id is None:
             raise ValueError("Vectorstore ID is not set")
-        
+
         if transaction_id in self.uploaded_transaction_ids:
             return
 
-        # make the tmp directory
-        os.makedirs(self.tmp_dir, exist_ok=True)
+        tmp_path = Path(self.tmp_dir)
+        tmp_path.mkdir(parents=True, exist_ok=True)
 
         try:
-            # get the entire transaction data
             transaction_data = self.get_transaction_by_id(transaction_id, clean_response_body=True)
-            transaction_file_path = os.path.join(self.tmp_dir, f"{transaction_id}.json")
-
-            with open(transaction_file_path, mode="w", encoding="utf-8") as f:
-                json.dump(transaction_data, f, ensure_ascii=False, indent=2)
-            # upload the transaction to the vectorstore using the add_file_to_vectorstore method
-            self.add_file_to_vectorstore(transaction_file_path, metadata)
-
+            transaction_file_path = tmp_path / f"{transaction_id}.json"
+            transaction_file_path.write_text(
+                json.dumps(transaction_data, ensure_ascii=False, indent=2),
+                encoding="utf-8"
+            )
+            self._upload_file_to_vectorstore(
+                self.cdp_captures_vectorstore_id,
+                str(transaction_file_path),
+                metadata
+            )
         finally:
-            # delete the tmp directory
-            shutil.rmtree(self.tmp_dir)
-            
-            # add the transaction id to the uploaded transaction ids
+            shutil.rmtree(tmp_path)
             self.uploaded_transaction_ids.add(transaction_id)
 
 
     def add_file_to_vectorstore(self, file_path: str, metadata: dict) -> None:
         """
-        Add a file to the vectorstore.
-        
+        Add a file to the CDP captures vectorstore.
         Args:
             file_path: Path to the file to upload
             metadata: Metadata to attach to the file
         """
-        assert self.vectorstore_id is not None, "Vectorstore ID is not set"
+        if self.cdp_captures_vectorstore_id is None:
+            raise ValueError("CDP captures vectorstore ID is not set")
+        self._upload_file_to_vectorstore(self.cdp_captures_vectorstore_id, file_path, metadata)
 
-        # get the file name
-        file_name = os.path.basename(file_path)
+    def _upload_file_to_vectorstore(self, vectorstore_id: str, file_path: str, metadata: dict) -> None:
+        """
+        Upload a file to a vectorstore (unified method for both CDP and documentation).
+        Args:
+            vectorstore_id: The vectorstore ID to upload to
+            file_path: Path to the file to upload
+            metadata: Metadata to attach to the file
+        """
+        path = Path(file_path)
 
-        # Create the raw file
-        with open(file_path, mode="rb") as f:
-            uploaded = self.client.files.create(
-                file=f,
-                purpose="assistants",
-            )
+        # Skip empty files (OpenAI rejects them)
+        if path.stat().st_size == 0:
+            return
 
-        # Attach file to vector store with attributes
+        with open(path, mode="rb") as f:
+            uploaded = self.client.files.create(file=f, purpose="assistants")
+
         self.client.vector_stores.files.create(
-            vector_store_id=self.vectorstore_id,
+            vector_store_id=vectorstore_id,
             file_id=uploaded.id,
-            attributes={
-                "filename": file_name,
-                **metadata
-            }
+            attributes={"filename": path.name, **metadata}
         )
 
 
@@ -298,18 +321,15 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         Get all transaction ids by request url.
         Efficiently reads only the request.json file instead of the entire transaction.
         """
-        all_transaction_ids = self.get_all_transaction_ids()
+        transactions_path = Path(self.transactions_dir)
         transaction_ids = []
-        for transaction_id in all_transaction_ids:
+        for transaction_id in self.get_all_transaction_ids():
             try:
-                # Only read the request.json file to check the URL
-                request_path = os.path.join(self.transactions_dir, transaction_id, "request.json")
-                with open(request_path, mode="r", encoding="utf-8") as f:
-                    request_data = json.load(f)
-                    if request_data.get("url") == request_url:
-                        transaction_ids.append(transaction_id)
+                request_path = transactions_path / transaction_id / "request.json"
+                request_data = json.loads(request_path.read_text(encoding="utf-8"))
+                if request_data.get("url") == request_url:
+                    transaction_ids.append(transaction_id)
             except (FileNotFoundError, json.JSONDecodeError, KeyError):
-                # Skip transactions with missing or malformed request files
                 continue
         return transaction_ids
 
@@ -370,13 +390,9 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         Returns:
             A list of storage items that contain the value.
         """
-        results = []
-        with open(self.storage_jsonl_path, mode="r", encoding='utf-8', errors='replace') as f:
-            for line in f:
-                if value in line:
-                    results.append(line)
-        return results
-    
+        storage_path = Path(self.storage_jsonl_path)
+        return [line for line in storage_path.read_text(encoding="utf-8", errors="replace").splitlines() if value in line]
+
     def scan_window_properties_for_value(self, value: str) -> list[dict]:
         """
         Scan the window properties for a value.
@@ -385,27 +401,189 @@ class LocalDiscoveryDataStore(DiscoveryDataStore):
         Returns:
             A list of window properties that contain the value.
         """
-        result = []
-        with open(self.window_properties_path, mode="r", encoding='utf-8', errors='replace') as f:
-            window_properties = json.load(f)
+        window_props_path = Path(self.window_properties_path)
+        window_properties = json.loads(window_props_path.read_text(encoding="utf-8", errors="replace"))
+        return [
+            {key: val} for key, val in window_properties.items()
+            if value in str(val)
+        ]
 
-            for key, window_property_value in window_properties.items():
-                if value in str(window_property_value):
-                    result.append({key: window_property_value})
-
-        return result
-
-    def get_response_body_file_extension(self, transaction_id: str) -> str:
+    def get_response_body_file_extension(self, transaction_id: str) -> str | None:
         """
         Get the extension of the response body file for a transaction.
         Args:
             transaction_id: The id of the transaction.
         Returns:
-            The extension of the response body file.
+            The extension of the response body file, or None if not found.
         """
-        # get all files in the transaction directory
-        files = os.listdir(os.path.join(self.transactions_dir, transaction_id))
-        for file in files:
-            if file.startswith("response_body"):
-                return os.path.splitext(file)[1].lower()
+        transaction_path = Path(self.transactions_dir) / transaction_id
+        for file in transaction_path.iterdir():
+            if file.name.startswith("response_body"):
+                return file.suffix.lower()
         return None
+
+    def make_documentation_vectorstore(self) -> None:
+        """
+        Create a vectorstore and upload documentation (.md files) and code files.
+        Both documentation_dirs and code_dirs contents go into the same vectorstore.
+        """
+        if self.documentation_vectorstore_id is not None:
+            raise ValueError(f"Documentation vectorstore already exists: {self.documentation_vectorstore_id}")
+
+        if not self.documentation_dirs and not self.code_dirs:
+            raise ValueError("At least one of documentation_dirs or code_dirs must be set")
+
+        # Clear cached info
+        self.uploaded_docs_info = []
+        self.uploaded_code_info = []
+
+        vs = self.client.vector_stores.create(
+            name=f"documentation-context-{int(time.time())}"
+        )
+        self.documentation_vectorstore_id = vs.id
+
+        self._upload_documentation_files()
+        self._upload_code_files()
+
+    def _upload_documentation_files(self) -> None:
+        """Scan all documentation_dirs for .md files and upload each to the vectorstore."""
+        for doc_dir in self.documentation_dirs:
+            doc_path = Path(doc_dir)
+            if not doc_path.exists():
+                raise ValueError(f"Documentation directory does not exist: {doc_dir}")
+
+            for file in doc_path.iterdir():
+                if file.is_file() and file.suffix == ".md":
+                    # Parse summary for caching
+                    content = file.read_text(encoding="utf-8", errors="replace")[:500]
+                    summary = self._parse_doc_summary(content)
+
+                    metadata = {"type": "documentation", "filename": file.name, "source_dir": doc_dir}
+                    self._upload_file_to_vectorstore(
+                        self.documentation_vectorstore_id,
+                        str(file),
+                        metadata
+                    )
+                    # Cache info for prompt generation
+                    self.uploaded_docs_info.append({"filename": file.name, "summary": summary})
+
+    def _upload_code_files(self) -> None:
+        """Recursively scan all code_dirs and upload all code files to the vectorstore."""
+        for code_dir in self.code_dirs:
+            code_path = Path(code_dir)
+            if not code_path.exists():
+                raise ValueError(f"Code directory does not exist: {code_dir}")
+
+            for file in code_path.rglob("*"):
+                if file.is_file() and file.suffix.lower() in self.code_file_extensions:
+                    relative_path = file.relative_to(code_path)
+                    # Parse docstring for caching
+                    docstring = self._parse_code_docstring(str(file))
+
+                    metadata = {
+                        "type": "code",
+                        "filename": file.name,
+                        "path": str(relative_path),
+                        "source_dir": code_dir
+                    }
+                    self._upload_file_to_vectorstore(
+                        self.documentation_vectorstore_id,
+                        str(file),
+                        metadata
+                    )
+                    # Cache info for prompt generation
+                    self.uploaded_code_info.append({"path": str(relative_path), "docstring": docstring})
+
+    def _parse_doc_summary(self, content: str) -> str | None:
+        """Parse summary from markdown content (blockquote after title)."""
+        lines = content.split("\n")
+        for i, line in enumerate(lines):
+            if line.startswith("> "):
+                return line[2:].strip()
+            if i > 5:
+                break
+        return None
+
+    def _parse_code_docstring(self, file_path: str) -> str | None:
+        """Extract module-level docstring from a code file."""
+        try:
+            with open(file_path, mode="r", encoding="utf-8", errors="replace") as f:
+                content = f.read(2000)  # Read first 2000 chars only
+
+            # Look for triple-quoted docstring at the start
+            for quote in ['"""', "'''"]:
+                if quote in content:
+                    start = content.find(quote)
+                    if start < 50:  # Must be near the top
+                        end = content.find(quote, start + 3)
+                        if end != -1:
+                            docstring = content[start + 3:end].strip()
+                            if docstring:
+                                return docstring
+        except Exception:
+            pass
+        return None
+
+    def _generate_cdp_captures_vectorstore_prompt(self) -> str:
+        """Generate a brief prompt describing the CDP captures vectorstore contents."""
+        if self.cdp_captures_vectorstore_id is None:
+            return ""
+
+        transaction_count = len(self.get_all_transaction_ids())
+
+        return f"""## CDP Captures Vectorstore
+Contains browser session data captured via Chrome DevTools Protocol:
+- `consolidated_transactions.json`: Summary of all {transaction_count} HTTP transactions
+- `storage.json`: Browser storage (localStorage, sessionStorage, cookies)
+- `window_properties.json`: JavaScript window object properties
+- Individual transaction files with request/response details"""
+
+    def _generate_documentation_vectorstore_prompt(self) -> str:
+        """Generate a brief prompt describing the documentation vectorstore contents."""
+        if self.documentation_vectorstore_id is None:
+            return ""
+
+        lines = ["## Documentation Vectorstore"]
+
+        # Use cached documentation info (populated during upload)
+        if self.uploaded_docs_info:
+            doc_entries = []
+            for info in sorted(self.uploaded_docs_info, key=lambda x: x["filename"]):
+                if info["summary"]:
+                    doc_entries.append(f"  - `{info['filename']}`: {info['summary']}")
+                else:
+                    doc_entries.append(f"  - `{info['filename']}`")
+            if doc_entries:
+                lines.append("**Documentation:**")
+                lines.extend(doc_entries)
+
+        # Use cached code info (populated during upload)
+        if self.uploaded_code_info:
+            code_entries = []
+            for info in sorted(self.uploaded_code_info, key=lambda x: x["path"]):
+                if info["docstring"]:
+                    code_entries.append(f"  - `{info['path']}`: {info['docstring']}")
+                else:
+                    code_entries.append(f"  - `{info['path']}`")
+            if code_entries:
+                lines.append("**Code:**")
+                lines.extend(code_entries)
+
+        return "\n".join(lines)
+
+    def generate_data_store_prompt(self) -> str:
+        """Generate a combined prompt describing all vectorstore contents."""
+        prompts = []
+
+        cdp_prompt = self._generate_cdp_captures_vectorstore_prompt()
+        if cdp_prompt:
+            prompts.append(cdp_prompt)
+
+        docs_prompt = self._generate_documentation_vectorstore_prompt()
+        if docs_prompt:
+            prompts.append(docs_prompt)
+
+        if not prompts:
+            return ""
+
+        return "# Available Data Stores\n\n" + "\n\n".join(prompts)

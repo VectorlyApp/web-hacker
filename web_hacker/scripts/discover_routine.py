@@ -55,12 +55,17 @@ def main() -> None:
         consolidated_transactions_path=os.path.join(args.cdp_captures_dir, "network/consolidated_transactions.json"),
         storage_jsonl_path=os.path.join(args.cdp_captures_dir, "storage/events.jsonl"),
         window_properties_path=os.path.join(args.cdp_captures_dir, "window_properties/window_properties.json"),
+        documentation_dirs=["./"],
+        code_dirs=["./web_hacker/data_models"],
     )
     logger.info("Data store initialized.")
 
-    # make the vectorstore
-    data_store.make_vectorstore()
-    logger.info("Vectorstore created: %s", data_store.vectorstore_id)
+    # make the vectorstores
+    data_store.make_cdp_captures_vectorstore()
+    logger.info("CDP captures vectorstore created: %s", data_store.cdp_captures_vectorstore_id)
+
+    data_store.make_documentation_vectorstore()
+    logger.info("Documentation vectorstore created: %s", data_store.documentation_vectorstore_id)
 
     # define message handler for progress updates
     def handle_discovery_message(message: RoutineDiscoveryMessage) -> None:
@@ -116,7 +121,7 @@ def main() -> None:
     finally:
         # clean up the vectorstore
         logger.info("Cleaning up vectorstore...")
-        context_manager.clean_up()
+        data_store.clean_up()
         logger.info("Vectorstore cleaned up.")
 
 
