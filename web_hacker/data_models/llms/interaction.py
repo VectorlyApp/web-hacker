@@ -191,7 +191,7 @@ class ChatThread(BaseModel):
     Container for a conversation thread.
     """
     id: str = Field(
-        default_factory=lambda: "ChatThread_" + str(uuid4()),
+        default_factory=lambda: str(uuid4()),
         description="Unique thread ID (UUIDv4)",
     )
     chat_ids: list[str] = Field(
