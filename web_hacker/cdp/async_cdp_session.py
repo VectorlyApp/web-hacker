@@ -1,5 +1,5 @@
 """
-web_hacker/cdp/async_cdp/async_cdp_session.py
+web_hacker/cdp/async_cdp_session.py
 
 Single comprehensive class for asynchronous CDP session monitoring.
 """
@@ -10,10 +10,10 @@ from typing import Any, Awaitable, Callable
 
 from websockets.asyncio.client import connect, ClientConnection
 
-from web_hacker.cdp.async_cdp.monitors.async_interaction_monitor import AsyncInteractionMonitor
-from web_hacker.cdp.async_cdp.monitors.async_network_monitor import AsyncNetworkMonitor
-from web_hacker.cdp.async_cdp.monitors.async_storage_monitor import AsyncStorageMonitor
-from web_hacker.cdp.async_cdp.monitors.async_window_property_monitor import AsyncWindowPropertyMonitor
+from web_hacker.cdp.monitors.async_interaction_monitor import AsyncInteractionMonitor
+from web_hacker.cdp.monitors.async_network_monitor import AsyncNetworkMonitor
+from web_hacker.cdp.monitors.async_storage_monitor import AsyncStorageMonitor
+from web_hacker.cdp.monitors.async_window_property_monitor import AsyncWindowPropertyMonitor
 from web_hacker.utils.logger import get_logger
 
 logger = get_logger(name=__name__)

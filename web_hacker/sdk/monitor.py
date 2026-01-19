@@ -17,7 +17,7 @@ from typing import Any
 
 import requests
 
-from web_hacker.cdp.async_cdp import AsyncCDPSession, FileEventWriter
+from web_hacker.cdp import AsyncCDPSession, FileEventWriter
 from web_hacker.cdp.connection import cdp_new_tab, dispose_context
 from web_hacker.utils.exceptions import BrowserConnectionError
 from web_hacker.utils.logger import get_logger

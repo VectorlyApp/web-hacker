@@ -1,5 +1,5 @@
 """
-web_hacker/cdp/async_cdp/file_event_writer.py
+web_hacker/cdp/file_event_writer.py
 
 File-based event writer callback for AsyncCDPSession.
 Used by web-hacker CLI and SDK to write CDP events to disk.

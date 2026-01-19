@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from web_hacker.cdp.async_cdp import AsyncCDPSession, FileEventWriter
+from web_hacker.cdp import AsyncCDPSession, FileEventWriter
 from web_hacker.cdp.connection import cdp_new_tab, dispose_context
 from web_hacker.data_models.routine.endpoint import ResourceType
 from web_hacker.utils.logger import get_logger

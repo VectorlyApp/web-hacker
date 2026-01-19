@@ -1,5 +1,5 @@
 """
-web_hacker/cdp/async_cdp/monitors/async_storage_monitor.py
+web_hacker/cdp/monitors/async_storage_monitor.py
 
 Async storage monitor for CDP.
 """
@@ -9,12 +9,12 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
-from web_hacker.cdp.async_cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
-from web_hacker.cdp.async_cdp.data_models import StorageEvent
+from web_hacker.cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
+from web_hacker.cdp.data_models import StorageEvent
 from web_hacker.utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from web_hacker.cdp.async_cdp.async_cdp_session import AsyncCDPSession
+    from web_hacker.cdp.async_cdp_session import AsyncCDPSession
 
 logger = get_logger(name=__name__)
 

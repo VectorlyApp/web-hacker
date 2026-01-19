@@ -1,5 +1,5 @@
 """
-web_hacker/cdp/async_cdp/monitors/async_window_property_monitor.py
+web_hacker/cdp/monitors/async_window_property_monitor.py
 
 Async window property monitor for CDP.
 """
@@ -10,12 +10,12 @@ import asyncio
 import time
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
-from web_hacker.cdp.async_cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
-from web_hacker.cdp.async_cdp.data_models import WindowPropertyChange, WindowPropertyEvent
+from web_hacker.cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
+from web_hacker.cdp.data_models import WindowPropertyChange, WindowPropertyEvent
 from web_hacker.utils.logger import get_logger
 
 if TYPE_CHECKING:  # avoid circular import
-    from web_hacker.cdp.async_cdp.async_cdp_session import AsyncCDPSession
+    from web_hacker.cdp.async_cdp_session import AsyncCDPSession
 
 logger = get_logger(name=__name__)
 

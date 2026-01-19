@@ -1,5 +1,5 @@
 """
-web_hacker/cdp/async_cdp/monitors/async_network_monitor.py
+web_hacker/cdp/monitors/async_network_monitor.py
 
 Async network monitor for CDP.
 """
@@ -14,14 +14,14 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar
 
-from web_hacker.cdp.async_cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
-from web_hacker.cdp.async_cdp.data_models import NetworkTransactionEvent
+from web_hacker.cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
+from web_hacker.cdp.data_models import NetworkTransactionEvent
 from web_hacker.data_models.routine.endpoint import ResourceType
 from web_hacker.utils.data_utils import get_text_from_html
 from web_hacker.utils.logger import get_logger
 
 if TYPE_CHECKING:  # avoid circular import
-    from web_hacker.cdp.async_cdp.async_cdp_session import AsyncCDPSession
+    from web_hacker.cdp.async_cdp_session import AsyncCDPSession
 
 logger = get_logger(name=__name__)
 

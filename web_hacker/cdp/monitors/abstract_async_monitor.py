@@ -1,5 +1,5 @@
 """
-web_hacker/cdp/async_cdp/monitors/abstract_async_monitor.py
+web_hacker/cdp/monitors/abstract_async_monitor.py
 
 Abstract base class for asynchronous CDP monitors.
 """

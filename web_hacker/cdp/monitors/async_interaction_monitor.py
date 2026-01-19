@@ -1,5 +1,5 @@
 """
-web_hacker/cdp/async_cdp/monitors/async_interaction_monitor.py
+web_hacker/cdp/monitors/async_interaction_monitor.py
 
 Async interaction monitor for CDP.
 Tracks mouse clicks, keyboard events, and element details via JavaScript injection.
@@ -11,13 +11,13 @@ import json
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
-from web_hacker.cdp.async_cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
+from web_hacker.cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
 from web_hacker.data_models.ui_elements import UiElement, BoundingBox
 from web_hacker.data_models.ui_interaction import UiInteractionEvent, InteractionType, Interaction
 from web_hacker.utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from web_hacker.cdp.async_cdp.async_cdp_session import AsyncCDPSession
+    from web_hacker.cdp.async_cdp_session import AsyncCDPSession
 
 logger = get_logger(name=__name__)
 

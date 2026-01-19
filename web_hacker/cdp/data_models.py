@@ -1,5 +1,5 @@
 """
-web_hacker/cdp/async_cdp/data_models.py
+web_hacker/cdp/data_models.py
 
 Data models for async CDP events.
 
