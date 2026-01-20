@@ -624,10 +624,10 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
             )
             return
 
-        # Prepend any pending update messages to user content, then clear them
-        updates = self._routine_state.flush_update_messages()
-        if updates:
-            content = f"{updates}\n\n{content}"
+        # Add any pending update messages as a system message
+        system_update = self._routine_state.flush_update_messages()
+        if system_update:
+            self._add_chat(ChatRole.SYSTEM, system_update)
 
         # Add user message to history
         self._add_chat(ChatRole.USER, content)
