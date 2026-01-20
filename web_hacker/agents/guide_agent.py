@@ -671,6 +671,8 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
 
         # Add user message to history
         self._add_chat(ChatRole.USER, content)
+        
+        
 
         # Run the agentic loop
         self._run_agent_loop()
@@ -705,17 +707,13 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
                 logger.info(f"OPENAI RESPONSE: {response}")
 
                 # Handle response - add assistant message if there's content or tool calls
-                # Use explicit length check for tool_calls to avoid falsy empty list issue
-                has_content = bool(response.content)
-                has_tool_calls = response.tool_calls is not None and len(response.tool_calls) > 0
-
-                if has_content or has_tool_calls:
+                if response.content or response.tool_calls:
                     chat = self._add_chat(
                         ChatRole.ASSISTANT,
                         response.content or "",
-                        tool_calls=response.tool_calls if has_tool_calls else None,
+                        tool_calls=response.tool_calls if response.tool_calls else None,
                     )
-                    if has_content:
+                    if response.content:
                         self._emit_message(
                             EmittedChatMessage(
                                 type=ChatMessageType.CHAT_RESPONSE,
@@ -725,17 +723,8 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
                             )
                         )
 
-                    # Log tool calls for debugging persistence issues
-                    if has_tool_calls:
-                        logger.info(
-                            "Saved assistant message %s with %d tool_calls: %s",
-                            chat.id,
-                            len(response.tool_calls),
-                            [tc.call_id for tc in response.tool_calls],
-                        )
-
                 # If no tool calls, we're done
-                if not has_tool_calls:
+                if not response.tool_calls:
                     logger.debug("Agent loop complete - no more tool calls")
                     return
 
