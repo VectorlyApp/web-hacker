@@ -530,7 +530,7 @@ class TerminalGuideChat:
             table.add_row("File", "[dim]N/A[/dim]")
 
         # Last execution
-        last_result = self._agent.routine_state.last_executed_routine_result
+        last_result = self._agent.routine_state.last_execution_result
         if last_result:
             ok = last_result.get("ok", False)
             status = "[green]Success[/green]" if ok else "[red]Failed[/red]"
@@ -668,9 +668,9 @@ class TerminalGuideChat:
 
             # Update agent state with execution result
             self._agent.routine_state.update_last_execution(
-                routine_json=routine_dict,
-                routine_params=params,
-                routine_result=result_dict,
+                routine=routine_dict,
+                parameters=params,
+                result=result_dict,
             )
             self._last_execution_ok = result.ok
 

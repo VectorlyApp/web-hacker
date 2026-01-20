@@ -50,9 +50,9 @@ class GuideAgentRoutineState:
         # Store as string to preserve raw content even if JSON is invalid
         self.current_routine_str: str | None = None
         # Execution-related fields stay as dict (only set after successful execution)
-        self.last_executed_routine_json: dict | None = None
-        self.last_executed_routine_params: dict | None = None
-        self.last_executed_routine_result: dict | None = None
+        self.last_execution_routine: dict | None = None
+        self.last_execution_parameters: dict | None = None
+        self.last_execution_result: dict | None = None
         # Timestamps for tracking state changes (None = no pending update)
         self._routine_change_at: int | None = None
         self._routine_change_type: Literal["added", "updated", "removed"] | None = None
@@ -83,16 +83,16 @@ class GuideAgentRoutineState:
 
     def update_last_execution(
         self,
-        routine_json: dict,
-        routine_params: dict,
-        routine_result: dict,
+        routine: dict,
+        parameters: dict,
+        result: dict,
     ) -> None:
         """
         Update last execution state and record timestamp.
         """
-        self.last_executed_routine_json = routine_json
-        self.last_executed_routine_params = routine_params
-        self.last_executed_routine_result = routine_result
+        self.last_execution_routine = routine
+        self.last_execution_parameters = parameters
+        self.last_execution_result = result
         self._execution_at = int(datetime.now().timestamp())
 
     def flush_update_messages(self) -> str | None:
@@ -128,9 +128,9 @@ class GuideAgentRoutineState:
     def reset(self) -> None:
         """Reset all state."""
         self.current_routine_str = None
-        self.last_executed_routine_json = None
-        self.last_executed_routine_params = None
-        self.last_executed_routine_result = None
+        self.last_execution_routine = None
+        self.last_execution_parameters = None
+        self.last_execution_result = None
         self._routine_change_at = None
         self._routine_change_type = None
         self._execution_at = None
@@ -522,18 +522,18 @@ you MUST use the `validate_routine` tool to validate the complete routine JSON.
 
         if tool_name == "get_last_routine_execution":
             logger.info("Executing tool %s", tool_name)
-            if self._routine_state.last_executed_routine_json is None:
+            if self._routine_state.last_execution_routine is None:
                 return {"error": "No routine has been executed yet."}
             return {
-                "routine_json": self._routine_state.last_executed_routine_json,
-                "parameters": self._routine_state.last_executed_routine_params,
+                "routine_json": self._routine_state.last_execution_routine,
+                "parameters": self._routine_state.last_execution_parameters,
             }
 
         if tool_name == "get_last_routine_execution_result":
             logger.info("Executing tool %s", tool_name)
-            if self._routine_state.last_executed_routine_result is None:
+            if self._routine_state.last_execution_result is None:
                 return {"error": "No routine execution result available. No routine has been executed yet."}
-            return {"result": self._routine_state.last_executed_routine_result}
+            return {"result": self._routine_state.last_execution_result}
 
         logger.error("Unknown tool \"%s\" with arguments: %s", tool_name, tool_arguments)
         raise UnknownToolError(f"Unknown tool \"{tool_name}\" with arguments: {tool_arguments}")
