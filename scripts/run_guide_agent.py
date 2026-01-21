@@ -307,7 +307,6 @@ class TerminalGuideChat:
         self._last_execution_ok: bool | None = None
         self._agent = GuideAgent(
             emit_message_callable=self._handle_message,
-            persist_routine_callable=self._persist_routine,
             stream_chunk_callable=self._handle_stream_chunk,
             llm_model=llm_model if llm_model else OpenAIModel.GPT_5_1,
             data_store=data_store,
