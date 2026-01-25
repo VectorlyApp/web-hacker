@@ -236,7 +236,9 @@ class TestAsyncNetworkMonitorFileOperations:
     def test_consolidate_transactions_missing_file(self, tmp_path: Path) -> None:
         """Missing file should return empty dict."""
         missing_file = tmp_path / "nonexistent.jsonl"
-        result = AsyncNetworkMonitor.consolidate_transactions(str(missing_file))
+        result = AsyncNetworkMonitor.consolidate_transactions(
+            network_events_path=str(missing_file),
+        )
         assert result == {}
 
     def test_consolidate_transactions_with_output(self, tmp_path: Path) -> None:
@@ -245,7 +247,10 @@ class TestAsyncNetworkMonitorFileOperations:
         output_file = tmp_path / "output.json"
         events_file.write_text('{"request_id": "1", "url": "https://a.com", "method": "GET"}\n')
 
-        AsyncNetworkMonitor.consolidate_transactions(str(events_file), str(output_file))
+        AsyncNetworkMonitor.consolidate_transactions(
+            network_events_path=str(events_file),
+            output_path=str(output_file),
+        )
 
         assert output_file.exists()
         content = json.loads(output_file.read_text())
@@ -260,7 +265,9 @@ class TestAsyncNetworkMonitorFileOperations:
         )
 
         result = AsyncNetworkMonitor.generate_har_from_transactions(
-            str(events_file), str(har_file), title="Test"
+            network_events_path=str(events_file),
+            har_path=str(har_file),
+            title="Test",
         )
 
         assert "log" in result
@@ -274,7 +281,8 @@ class TestAsyncNetworkMonitorFileOperations:
         har_file = tmp_path / "network.har"
 
         result = AsyncNetworkMonitor.generate_har_from_transactions(
-            str(missing_file), str(har_file)
+            network_events_path=str(missing_file),
+            har_path=str(har_file),
         )
 
         assert result["log"]["entries"] == []
