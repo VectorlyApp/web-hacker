@@ -42,15 +42,6 @@ def step_1_monitor_browser(cdp_captures_dir: Path) -> bool:
         print_colored(f"⏭️  Using existing captures from: {cdp_captures_dir}", GREEN)
         return True
 
-    # Launch Chrome if not already running
-    if check_chrome_running(PORT):
-        print_colored(f"✅ Chrome is already running on port {PORT}", GREEN)
-    else:
-        launch_chrome(PORT)
-        if not check_chrome_running(PORT):
-            print_colored("❌ Chrome is not running. Cannot continue.", YELLOW)
-            return False
-
     # Check for existing data
     if cdp_captures_dir.exists() and any(cdp_captures_dir.iterdir()):
         print_colored(f"⚠️  Directory {cdp_captures_dir} contains existing data.", YELLOW)
@@ -60,13 +51,22 @@ def step_1_monitor_browser(cdp_captures_dir: Path) -> bool:
 
     print()
     print_colored("📋 Instructions:", YELLOW)
-    print("   1. A new Chrome tab will open")
+    print("   1. Chrome will launch (if not already running)")
     print("   2. Navigate to your target website")
     print("   3. Perform the actions you want to automate")
     print("   4. Press Ctrl+C when done")
     print()
     input("Press Enter to start monitoring...")
     print()
+
+    # Launch Chrome if not already running
+    if check_chrome_running(PORT):
+        print_colored(f"✅ Chrome is already running on port {PORT}", GREEN)
+    else:
+        launch_chrome(PORT)
+        if not check_chrome_running(PORT):
+            print_colored("❌ Chrome is not running. Cannot continue.", YELLOW)
+            return False
 
     print("🔍 Starting browser monitor...")
     print_colored(f"   Output directory: {cdp_captures_dir}", BLUE)
@@ -75,8 +75,7 @@ def step_1_monitor_browser(cdp_captures_dir: Path) -> bool:
     monitor = BrowserMonitor(
         remote_debugging_address=REMOTE_DEBUGGING_ADDRESS,
         output_dir=str(cdp_captures_dir),
-        url="about:blank",
-        incognito=True,
+        create_tab=False,
     )
 
     try:
@@ -85,8 +84,8 @@ def step_1_monitor_browser(cdp_captures_dir: Path) -> bool:
         print_colored("   Press Ctrl+C when done...", YELLOW)
         print()
 
-        # Wait for user to press Ctrl+C
-        while True:
+        # Wait for user to press Ctrl+C or tab to close
+        while monitor.is_alive:
             time.sleep(1)
 
     except KeyboardInterrupt:
@@ -109,7 +108,7 @@ def step_2_discover_routine(
     hacker: WebHacker,
     cdp_captures_dir: Path,
     discovery_output_dir: Path,
-) -> Optional[Routine]:
+) -> Routine | None:
     """Step 2: Discover routine from captured data."""
     print_header("Step 2: Discover Routine")
 

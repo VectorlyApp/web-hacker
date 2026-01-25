@@ -11,6 +11,7 @@ Commands:
   /show                    Show current routine details
   /validate                Validate the current routine
   /execute [params.json]   Execute the loaded routine
+  /monitor                 Start browser monitoring session
   /diff                    Show pending suggested edit diff
   /accept                  Accept pending suggested edit
   /reject                  Reject pending suggested edit
@@ -47,6 +48,7 @@ from web_hacker.config import Config
 from web_hacker.data_models.llms.vendors import OpenAIModel
 from web_hacker.data_models.llms.interaction import (
     ChatMessageType,
+    ChatRole,
     EmittedMessage,
     PendingToolInvocation,
     SuggestedEditRoutine,
@@ -128,6 +130,7 @@ can be turned into a reusable routine.
   [cyan]/show[/cyan]                    Show current routine details
   [cyan]/validate[/cyan]                Validate the current routine
   [cyan]/execute \[params.json][/cyan]   Execute the loaded routine
+  [cyan]/monitor[/cyan]                 Start browser monitoring session
   [cyan]/diff[/cyan]                    Show pending suggested edit diff
   [cyan]/accept[/cyan]                  Accept pending suggested edit
   [cyan]/reject[/cyan]                  Reject pending suggested edit
@@ -906,9 +909,9 @@ class TerminalGuideChat:
         console.print()
         self._pending_suggested_edit = None
 
-    def _handle_browser_recording(self) -> None:
-        """Handle a browser recording request from the agent."""
-        if not ask_yes_no("Start browser monitoring?"):
+    def _handle_browser_recording(self, skip_prompt: bool = False) -> None:
+        """Handle a browser recording request."""
+        if not skip_prompt and not ask_yes_no("Start browser monitoring?"):
             return
 
         # Ensure Chrome is running in debug mode (launch if needed)
@@ -930,8 +933,7 @@ class TerminalGuideChat:
         monitor = BrowserMonitor(
             remote_debugging_address=REMOTE_DEBUGGING_ADDRESS,
             output_dir=str(cdp_captures_dir),
-            url="about:blank",
-            incognito=True,
+            create_tab=False,
         )
 
         try:
@@ -940,7 +942,7 @@ class TerminalGuideChat:
             console.print("[yellow]Press Ctrl+C when done...[/yellow]")
             console.print()
 
-            while True:
+            while monitor.is_alive:
                 time.sleep(1)
 
         except KeyboardInterrupt:
@@ -951,10 +953,61 @@ class TerminalGuideChat:
 
         console.print()
         console.print("[bold green]✓ Monitoring complete![/bold green]")
+        transaction_count = summary.get('network_transactions', 0) if summary else 0
         if summary:
             console.print(f"[dim]Duration: {summary.get('duration', 0):.1f}s[/dim]")
-            console.print(f"[dim]Transactions captured: {summary.get('network_transactions', 0)}[/dim]")
+            console.print(f"[dim]Transactions captured: {transaction_count}[/dim]")
         console.print()
+
+        # Create vectorstore from captured data if we have transactions
+        if transaction_count == 0:
+            console.print("[yellow]⚠ No transactions captured. Skipping vectorstore creation.[/yellow]")
+            console.print()
+            return
+
+        if not isinstance(self._data_store, LocalDiscoveryDataStore):
+            console.print("[yellow]⚠ No data store available. Skipping vectorstore creation.[/yellow]")
+            console.print()
+            return
+
+        # Update data store with CDP capture paths
+        self._data_store.tmp_dir = str(cdp_captures_dir / "tmp")
+        self._data_store.transactions_dir = str(cdp_captures_dir / "network" / "transactions")
+        self._data_store.consolidated_transactions_path = str(cdp_captures_dir / "network" / "consolidated_transactions.json")
+        self._data_store.storage_jsonl_path = str(cdp_captures_dir / "storage" / "events.jsonl")
+        self._data_store.window_properties_path = str(cdp_captures_dir / "window_properties" / "window_properties.json")
+        self._data_store.cached_transaction_ids = None  # Clear cache
+
+        # Delete old CDP vectorstore if it exists
+        if self._data_store.cdp_captures_vectorstore_id is not None:
+            console.print("[dim]Cleaning up previous CDP vectorstore...[/dim]")
+            try:
+                self._data_store.client.vector_stores.delete(
+                    vector_store_id=self._data_store.cdp_captures_vectorstore_id
+                )
+            except Exception:
+                pass  # Ignore errors - vectorstore may have expired
+            self._data_store.cdp_captures_vectorstore_id = None
+
+        # Create new vectorstore
+        with console.status("[bold blue]Creating CDP captures vectorstore...[/bold blue]"):
+            self._data_store.make_cdp_captures_vectorstore()
+
+        # Refresh agent's vectorstore access so file_search can find CDP captures
+        self._agent.refresh_vectorstores()
+
+        console.print("[green]✓ CDP captures vectorstore ready![/green]")
+        console.print()
+
+        # Notify the agent about the new data - use [ACTION REQUIRED] prefix to trigger immediate action
+        system_message = (
+            "[ACTION REQUIRED] Browser recording completed. New CDP captures are now available in the vectorstore. "
+            f"{transaction_count} network transactions were captured. "
+            "Scan the captured data NOW using file_search to verify it contains the information needed for the user's requested automation. "
+            "Examine the consolidated_transactions.json and confirm the relevant API endpoints, "
+            "request/response payloads, and any authentication data are present."
+        )
+        self._agent.process_new_message(system_message, ChatRole.SYSTEM)
 
     def run(self) -> None:
         """Run the interactive chat loop."""
@@ -995,6 +1048,7 @@ class TerminalGuideChat:
   [cyan]/show[/cyan]                    Show current routine details
   [cyan]/validate[/cyan]                Validate the current routine
   [cyan]/execute \[params.json][/cyan]   Execute the loaded routine
+  [cyan]/monitor[/cyan]                 Start browser monitoring session
   [cyan]/diff[/cyan]                    Show pending suggested edit diff
   [cyan]/accept[/cyan]                  Accept pending suggested edit
   [cyan]/reject[/cyan]                  Reject pending suggested edit
@@ -1058,6 +1112,10 @@ class TerminalGuideChat:
 
                 if cmd == "/unload":
                     self._handle_unload_command()
+                    continue
+
+                if cmd == "/monitor":
+                    self._handle_browser_recording(skip_prompt=True)
                     continue
 
                 if user_input.strip().startswith("/load "):

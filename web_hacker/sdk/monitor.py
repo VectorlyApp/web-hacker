@@ -136,14 +136,19 @@ class BrowserMonitor:
             except Exception as e:
                 raise BrowserConnectionError(f"Failed to create browser tab: {e}")
         else:
-            # Connect to existing browser
+            # Attach to an existing page tab
             try:
-                ver = requests.get(f"{self.remote_debugging_address}/json/version", timeout=5)
-                ver.raise_for_status()
-                data = ver.json()
-                ws_url = data.get("webSocketDebuggerUrl")
-                if not ws_url:
-                    raise BrowserConnectionError("Could not get WebSocket URL from browser")
+                resp = requests.get(f"{self.remote_debugging_address}/json/list", timeout=5)
+                resp.raise_for_status()
+                tabs = resp.json()
+                page_tabs = [t for t in tabs if t.get("type") == "page"]
+                if not page_tabs:
+                    raise BrowserConnectionError("No existing page tabs found to attach to")
+                target_id = page_tabs[0]["id"]
+                host_port = self.remote_debugging_address.replace("http://", "").replace("https://", "")
+                ws_url = f"ws://{host_port}/devtools/page/{target_id}"
+            except BrowserConnectionError:
+                raise
             except Exception as e:
                 raise BrowserConnectionError(f"Failed to connect to browser: {e}")
 
@@ -297,6 +302,15 @@ class BrowserMonitor:
 
         summary = self.get_summary()
 
+        # Count actual transaction directories on disk
+        transactions_dir = Path(self.output_dir) / "network" / "transactions"
+        if transactions_dir.exists():
+            summary["network_transactions"] = sum(
+                1 for d in transactions_dir.iterdir() if d.is_dir()
+            )
+        else:
+            summary["network_transactions"] = 0
+
         # Cleanup browser context only if browser is still connected
         if self.created_tab and self.context_id and self._is_browser_connected():
             try:
@@ -310,6 +324,11 @@ class BrowserMonitor:
         logger.info("Browser monitoring stopped.")
         return summary
     
+    @property
+    def is_alive(self) -> bool:
+        """Check if the monitoring thread is still running."""
+        return self._run_thread is not None and self._run_thread.is_alive()
+
     def get_summary(self) -> dict:
         """Get current monitoring summary without stopping."""
         if not self.session:

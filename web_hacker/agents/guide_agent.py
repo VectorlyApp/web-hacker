@@ -220,6 +220,12 @@ but is not required before calling `suggest_routine_edit`.
 ## NOTES:
 - Quotes or escaped quotes are ESSENTIAL AROUND {{{{parameter_name}}}} ALL parameters in routines, regardless of type!
 - Before saying ANYTHING ABOUT QUOTES OR ESCAPED QUOTES, you MUST look through the docs!
+
+## System Action Messages
+When you receive a system message with the prefix "[ACTION REQUIRED]", you MUST immediately \
+execute the requested action using the appropriate tools. Do NOT just acknowledge the message - \
+actually call the tools and perform the action. These are internal system requests that require \
+immediate execution, not just acknowledgment.
 """
 
     # Magic methods ________________________________________________________________________________________________________
@@ -781,17 +787,22 @@ but is not required before calling `suggest_routine_edit`.
     # Public methods _______________________________________________________________________________________________________
 
     def process_user_message(self, content: str) -> None:
+        """Process a user message. Convenience wrapper for process_new_message."""
+        self.process_new_message(content, ChatRole.USER)
+
+    def process_new_message(self, content: str, role: ChatRole = ChatRole.USER) -> None:
         """
-        Process a user message and emit responses via callback.
+        Process a new message and emit responses via callback.
 
         This method handles the agentic conversation loop:
-        1. Adds user message to history
+        1. Adds the message to history
         2. Calls LLM to generate response
         3. If tool calls: execute tools, add results to history, call LLM again
         4. Repeat until LLM responds with text only (or tool needs approval)
 
         Args:
-            content: The user's message content
+            content: The message content
+            role: The role of the message sender (USER or SYSTEM)
         """
         # Block new messages if there's a pending tool invocation
         if self._thread.pending_tool_invocation:
@@ -808,10 +819,8 @@ but is not required before calling `suggest_routine_edit`.
         if system_update:
             self._add_chat(ChatRole.SYSTEM, system_update)
 
-        # Add user message to history
-        self._add_chat(ChatRole.USER, content)
-        
-        
+        # Add message to history
+        self._add_chat(role, content)
 
         # Run the agentic loop
         self._run_agent_loop()
@@ -1161,3 +1170,19 @@ but is not required before calling `suggest_routine_edit`.
             old_chat_thread_id,
             self._thread.id,
         )
+
+    def refresh_vectorstores(self) -> None:
+        """
+        Refresh the file_search vectorstores from the data store.
+
+        Call this after adding new vectorstores to the data store (e.g., after
+        creating a CDP captures vectorstore from browser recording).
+        """
+        if self._data_store:
+            vector_store_ids = self._data_store.get_vectorstore_ids()
+            if vector_store_ids:
+                self.llm_client.set_file_search_vectorstores(vector_store_ids)
+                logger.info("Refreshed vectorstores: %s", vector_store_ids)
+            else:
+                self.llm_client.set_file_search_vectorstores(None)
+                logger.info("Cleared vectorstores (none available)")
