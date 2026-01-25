@@ -112,7 +112,7 @@ class FileEventWriter:
 
         # Write to JSONL file (append mode)
         try:
-            with open(output_path, "a", encoding="utf-8") as f:
+            with open(output_path, mode="a", encoding="utf-8") as f:
                 json_line = json.dumps(event_dict, ensure_ascii=False)
                 f.write(json_line + "\n")
         except Exception as e:
@@ -143,7 +143,6 @@ class FileEventWriter:
             Configured FileEventWriter instance.
         """
         output_dir = Path(output_dir)
-
         paths = {
             # Directories
             "output_dir": str(output_dir),
@@ -163,5 +162,4 @@ class FileEventWriter:
             "network_har_path": str(output_dir / "network" / "network.har"),
             "summary_path": str(output_dir / "session_summary.json"),
         }
-
         return cls(paths=paths)

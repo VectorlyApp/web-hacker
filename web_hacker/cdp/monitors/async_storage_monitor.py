@@ -299,7 +299,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
             origin=origin,
         )
         try:
-            await self.event_callback_fn(self.get_monitor_category(), event.model_dump())
+            await self.event_callback_fn(self.get_monitor_category(), event)
             logger.info("📊 Emitted %s cleared event for origin: %s", storage_type, origin)
         except Exception as e:
             logger.error("❌ Error calling event_callback for %s cleared: %s", storage_type, e, exc_info=True)
@@ -327,7 +327,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
             key=key,
         )
         try:
-            await self.event_callback_fn(self.get_monitor_category(), event.model_dump())
+            await self.event_callback_fn(self.get_monitor_category(), event)
             logger.info("📊 Emitted %s item removed event: origin=%s, key=%s", storage_type, origin, key)
         except Exception as e:
             logger.error("❌ Error calling event_callback for %s removed: %s", storage_type, e, exc_info=True)
@@ -359,7 +359,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
             value=new_value,
         )
         try:
-            await self.event_callback_fn(self.get_monitor_category(), event.model_dump())
+            await self.event_callback_fn(self.get_monitor_category(), event)
             logger.info("📊 Emitted %s item added event: origin=%s, key=%s", storage_type, origin, key)
         except Exception as e:
             logger.error("❌ Error calling event_callback for %s added: %s", storage_type, e, exc_info=True)
@@ -393,7 +393,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
             new_value=new_value,
         )
         try:
-            await self.event_callback_fn(self.get_monitor_category(), event.model_dump())
+            await self.event_callback_fn(self.get_monitor_category(), event)
             logger.info("📊 Emitted %s item updated event: origin=%s, key=%s", storage_type, origin, key)
         except Exception as e:
             logger.error("❌ Error calling event_callback for %s updated: %s", storage_type, e, exc_info=True)
@@ -422,7 +422,7 @@ class AsyncStorageMonitor(AbstractAsyncMonitor):
             params=params,
         )
         try:
-            await self.event_callback_fn(self.get_monitor_category(), event.model_dump())
+            await self.event_callback_fn(self.get_monitor_category(), event)
             logger.info("📊 Emitted IndexedDB event")
         except Exception as e:
             logger.error("❌ Error calling event_callback for IndexedDB event: %s", e, exc_info=True)

@@ -3,7 +3,7 @@ web_hacker/cdp/data_models.py
 
 Data models for async CDP events.
 
- NOTE: Interaction events use UiInteractionEvent.
+NOTE: Interaction events use UiInteractionEvent.
 """
 
 from datetime import datetime
