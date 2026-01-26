@@ -1062,7 +1062,7 @@ class TerminalGuideChat:
             if response == "y":
                 break
             if response == "n":
-                self._agent.notify_routine_discovery_started(accepted=False)
+                self._agent.notify_routine_discovery_approval(accepted=False)
                 return
             if response == "m":
                 modified_task = console.input("[yellow]Enter new task description: [/yellow]").strip()
@@ -1078,7 +1078,7 @@ class TerminalGuideChat:
                 console.print("[yellow]⚠ Please enter 'y', 'n', or 'm'[/yellow]")
 
         # User accepted - log that discovery is starting (no agent response yet)
-        self._agent.notify_routine_discovery_started(accepted=True, task_description=task)
+        self._agent.notify_routine_discovery_approval(accepted=True, task_description=task)
 
         # Verify we have data store with CDP captures
         if not isinstance(self._data_store, LocalDiscoveryDataStore):

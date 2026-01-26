@@ -1101,7 +1101,7 @@ execute the requested action using the appropriate tools.
             )
         self.process_new_message(system_message, ChatRole.SYSTEM)
 
-    def notify_routine_discovery_started(
+    def notify_routine_discovery_approval(
         self,
         accepted: bool,
         task_description: str | None = None,
@@ -1161,8 +1161,7 @@ execute the requested action using the appropriate tools.
                 f"[ACTION REQUIRED] Routine discovery completed successfully.{task_info} "
                 f"The routine '{routine_name}' has been created with {ops_count} operations "
                 f"and {params_count} parameters. "
-                "Review the routine using get_current_routine and explain to the user what it does, "
-                "what parameters it needs, and how to use it."
+                "Review the routine using get_current_routine and very briefly explain the routine."
             )
         self.process_new_message(system_message, ChatRole.SYSTEM)
 
