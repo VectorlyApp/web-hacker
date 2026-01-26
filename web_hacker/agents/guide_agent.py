@@ -1136,7 +1136,6 @@ execute the requested action using the appropriate tools.
         self,
         error: str | None = None,
         routine: Routine | None = None,
-        task_description: str | None = None,
     ) -> None:
         """
         Notify the agent that routine discovery has completed.
@@ -1145,7 +1144,6 @@ execute the requested action using the appropriate tools.
         Args:
             error: Optional error message if discovery failed.
             routine: The discovered routine on success.
-            task_description: The task description used for discovery.
         """
         if error:
             system_message = (
@@ -1156,9 +1154,8 @@ execute the requested action using the appropriate tools.
             routine_name = routine.name if routine else "Unknown"
             ops_count = len(routine.operations) if routine else 0
             params_count = len(routine.parameters) if routine else 0
-            task_info = f" Task: '{task_description}'." if task_description else ""
             system_message = (
-                f"[ACTION REQUIRED] Routine discovery completed successfully.{task_info} "
+                f"[ACTION REQUIRED] Routine discovery completed successfully. "
                 f"The routine '{routine_name}' has been created with {ops_count} operations "
                 f"and {params_count} parameters. "
                 "Review the routine using get_current_routine and very briefly explain the routine."
