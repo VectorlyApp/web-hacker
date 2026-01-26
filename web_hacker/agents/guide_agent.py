@@ -12,7 +12,7 @@ Contains:
 import json
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Callable, Literal
+from typing import Any, Callable
 from uuid import uuid4
 
 from web_hacker.data_models.llms.interaction import (
@@ -53,6 +53,13 @@ class GuideAgentMode(StrEnum):
     EDITING = "editing"    # Routine loaded - help debug/edit
 
 
+class RoutineChangeType(StrEnum):
+    """Type of change made to the routine."""
+    ADDED = "added"
+    UPDATED = "updated"
+    REMOVED = "removed"
+
+
 class GuideAgentRoutineState:
     """
     Manages routine state for the Guide Agent.
@@ -72,7 +79,7 @@ class GuideAgentRoutineState:
         self.last_execution_result: dict | None = None
         # Timestamps for tracking state changes (None = no pending update)
         self._routine_change_at: int | None = None
-        self._routine_change_type: Literal["added", "updated", "removed"] | None = None
+        self._routine_change_type: RoutineChangeType | None = None
         self._execution_at: int | None = None
 
     def update_current_routine(self, routine_str: str | None) -> None:
@@ -88,11 +95,11 @@ class GuideAgentRoutineState:
 
         # Determine change type and record timestamp
         if routine_str is None:
-            change_type = "removed"
+            change_type = RoutineChangeType.REMOVED
         elif was_none:
-            change_type = "added"
+            change_type = RoutineChangeType.ADDED
         else:
-            change_type = "updated"
+            change_type = RoutineChangeType.UPDATED
 
         self._routine_change_at = int(datetime.now().timestamp())
         self._routine_change_type = change_type
@@ -121,9 +128,9 @@ class GuideAgentRoutineState:
 
         # Check for routine change
         if self._routine_change_at is not None and self._routine_change_type is not None:
-            if self._routine_change_type == "removed":
+            if self._routine_change_type == RoutineChangeType.REMOVED:
                 messages.append("[System Update] Routine has been removed from context.")
-            elif self._routine_change_type == "added":
+            elif self._routine_change_type == RoutineChangeType.ADDED:
                 messages.append("[System Update] Routine added to context. Use get_current_routine to see the routine.")
             else:  # updated
                 messages.append("[System Update] Routine has been updated. Use get_current_routine to see the changes.")
