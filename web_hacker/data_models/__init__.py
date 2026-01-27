@@ -1,4 +1,0 @@
-"""
-Web Hacker data models.
-"""
-
