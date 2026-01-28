@@ -46,7 +46,7 @@ jobs:
       - name: Extract version
         id: get-version
         run: |
-          VERSION=$(ls dist/*.whl | sed 's/.*bluebox-\(.*\)-py3.*/\1/')
+          VERSION=$(ls dist/*.whl | sed 's/.*bluebox_sdk-\(.*\)-py3.*/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Verify wheel installs
@@ -105,7 +105,7 @@ jobs:
       - name: Extract TestPyPI version
         id: get-version
         run: |
-          VERSION=$(ls dist/*.whl | sed 's/.*bluebox-\(.*\)-py3.*/\1/')
+          VERSION=$(ls dist/*.whl | sed 's/.*bluebox_sdk-\(.*\)-py3.*/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - uses: pypa/gh-action-pypi-publish@release/v1

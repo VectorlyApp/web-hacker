@@ -9,6 +9,8 @@
 
 REVERSE ENGINEER ANY WEB APP! ⚡️
 
+**Why "Blue Box"?** Named after the [phone phreaking devices](https://en.wikipedia.org/wiki/Blue_box) that let tech enthusiasts in the 1960s and 70s explore telephone networks.
+
 **You are in the right place if you ...**
 
 * want your AI agent to take real actions on the web
