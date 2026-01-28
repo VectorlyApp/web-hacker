@@ -343,6 +343,7 @@ and improve web automation routines.
         data_store: DiscoveryDataStore | None = None,
         tools_requiring_approval: set[str] | None = None,
         system_prompt: str | None = None,
+        remote_debugging_address: str = "http://127.0.0.1:9222",
     ) -> None:
         """
         Initialize the guide agent.
@@ -362,8 +363,11 @@ and improve web automation routines.
             data_store: Optional data store for accessing CDP captures and documentation.
             tools_requiring_approval: Set of tool names that require user approval before execution.
                 If empty or None, all tools auto-execute without approval.
+            remote_debugging_address: Chrome DevTools Protocol address for browser connection.
+                Defaults to local Chrome. Set to cloud browser URL for remote execution.
         """
         self._emit_message_callable = emit_message_callable
+        self._remote_debugging_address = remote_debugging_address
         self._persist_chat_callable = persist_chat_callable
         self._persist_chat_thread_callable = persist_chat_thread_callable
         self._persist_suggested_edit_callable = persist_suggested_edit_callable
@@ -919,6 +923,7 @@ and improve web automation routines.
         result = execute_routine_from_json(
             routine_json_str=self._routine_state.current_routine_str,
             parameters=parameters,
+            remote_debugging_address=self._remote_debugging_address,
             timeout=timeout,
             close_tab_when_done=close_tab_when_done,
         )
@@ -978,6 +983,7 @@ and improve web automation routines.
         result = execute_routine_from_dict(
             routine_dict=suggested_edit.routine.model_dump(),
             parameters=parameters,
+            remote_debugging_address=self._remote_debugging_address,
             timeout=timeout,
             close_tab_when_done=close_tab_when_done,
         )
