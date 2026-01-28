@@ -53,6 +53,7 @@ from .utils.exceptions import (
 )
 
 # Core modules (for advanced usage)
+from . import agents
 from . import cdp
 from . import data_models
 from . import routine_discovery
@@ -83,6 +84,7 @@ __all__ = [
     "LLMStructuredOutputError",
     "UnsupportedFileFormat",
     # Core modules
+    "agents",
     "cdp",
     "data_models",
     "routine_discovery",
