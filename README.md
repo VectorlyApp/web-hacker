@@ -45,12 +45,6 @@ Example:
 
 ### Quickstart
 
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/d2262dcf-e004-47f0-844b-0a60b566388d" width="760" controls autoplay loop muted>
-    Video not supported? [Watch the demo on YouTube](https://youtu.be/s4Xe_2pXcSQ)
-  </video>
-</p>
-
 ### Parameters
 
 - Defined as typed inputs (see [`Parameter`](https://github.com/VectorlyApp/bluebox/blob/main/src/data_models/production_routine.py) class).
