@@ -7,6 +7,7 @@ Parses HAR files and provides structured access to network traffic data.
 """
 
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
@@ -162,6 +163,168 @@ class HarDataStore:
         "text/xml",
         "application/xml",
         "text/plain",
+    )
+
+    # Key terms for identifying important API endpoints (singular form to catch plurals too)
+    # These are case-insensitive substring matches
+    API_KEY_TERMS = (
+        # Core API identifiers
+        "api",
+        "graphql",
+        "rest",
+        "rpc",
+        # Authentication & User
+        "auth",
+        "login",
+        "logout",
+        "oauth",
+        "token",
+        "session",
+        "user",
+        "account",
+        "profile",
+        "register",
+        "signup",
+        # Data Operations
+        "search",
+        "query",
+        "filter",
+        "fetch",
+        "create",
+        "update",
+        "delete",
+        "submit",
+        "save",
+        # E-commerce/Transactions
+        "cart",
+        "checkout",
+        "order",
+        "payment",
+        "purchase",
+        "booking",
+        "reserve",
+        "quote",
+        "price",
+        # Content
+        "content",
+        "data",
+        "item",
+        "product",
+        "result",
+        "detail",
+        "info",
+        "summary",
+        "list",
+        # Actions
+        "action",
+        "execute",
+        "process",
+        "validate",
+        "verify",
+        "confirm",
+        "send",
+        # Events & Tracking
+        "event",
+        "track",
+        "analytic",
+        "metric",
+        "log",
+        # Autocomplete & Suggestions
+        "autocomplete",
+        "typeahead",
+        "suggest",
+        "complete",
+        "hint",
+        "predict",
+        # Backend Services
+        "gateway",
+        "service",
+        "backend",
+        "internal",
+        "ajax",
+        "xhr",
+        "bff",
+        # Next.js / frameworks
+        "_next/data",
+        "__api__",
+        "_api",
+    )
+
+    # Regex pattern for versioned API endpoints (v1, v2, v3, etc.)
+    API_VERSION_PATTERN = re.compile(r"/v\d+/", re.IGNORECASE)
+
+    # Third-party domains to exclude from likely API endpoints (analytics, tracking, consent, ads)
+    EXCLUDED_THIRD_PARTY_DOMAINS = (
+        # Analytics & Performance Monitoring
+        "google-analytics.com",
+        "googletagmanager.com",
+        "analytics.google.com",
+        "go-mpulse.net",
+        "akamai.net",
+        "newrelic.com",
+        "nr-data.net",
+        "segment.io",
+        "segment.com",
+        "mixpanel.com",
+        "amplitude.com",
+        "heap.io",
+        "heapanalytics.com",
+        "fullstory.com",
+        "hotjar.com",
+        "mouseflow.com",
+        "clarity.ms",
+        "matomo.",
+        "piwik.",
+        # Consent & Privacy
+        "onetrust.com",
+        "cookielaw.org",
+        "trustarc.com",
+        "cookiebot.com",
+        "consent.cookiebot.com",
+        "privacy-center.",
+        "consentmanager.",
+        # Advertising & Marketing
+        "doubleclick.net",
+        "googlesyndication.com",
+        "googleadservices.com",
+        "facebook.net",
+        "fbcdn.net",
+        "twitter.com/i/",
+        "ads-twitter.com",
+        "linkedin.com/li/",
+        "adsrvr.org",
+        "criteo.com",
+        "criteo.net",
+        "taboola.com",
+        "outbrain.com",
+        "adnxs.com",
+        "rubiconproject.com",
+        "pubmatic.com",
+        "openx.net",
+        "casalemedia.com",
+        "demdex.net",
+        "omtrdc.net",
+        "2o7.net",
+        # Error Tracking
+        "sentry.io",
+        "bugsnag.com",
+        "rollbar.com",
+        "logrocket.com",
+        "trackjs.com",
+        # CDNs (usually static assets, not APIs)
+        "cloudflare.com/cdn-cgi/",
+        "jsdelivr.net",
+        "unpkg.com",
+        "cdnjs.cloudflare.com",
+        # Social Widgets
+        "platform.twitter.com",
+        "connect.facebook.net",
+        "platform.linkedin.com",
+        # Misc Third-party
+        "recaptcha.net",
+        "gstatic.com",
+        "fonts.googleapis.com",
+        "fonts.gstatic.com",
     )
 
     @staticmethod
@@ -465,7 +628,7 @@ class HarDataStore:
     def search_entries_by_terms(
         self,
         terms: list[str],
-        top_n: int = 10,
+        top_n: int = 20,
     ) -> list[dict[str, Any]]:
         """
         Search entries by a list of terms and rank by relevance.
@@ -557,6 +720,168 @@ class HarDataStore:
                 endpoints.add((entry.method, entry.host, entry.path.split("?")[0]))
 
         return sorted(endpoints, key=lambda x: (x[1], x[2], x[0]))
+
+    def _is_excluded_third_party(self, url: str) -> bool:
+        """Check if URL belongs to an excluded third-party domain."""
+        url_lower = url.lower()
+        for domain in self.EXCLUDED_THIRD_PARTY_DOMAINS:
+            if domain in url_lower:
+                return True
+        return False
+
+    def likely_api_urls(self) -> list[str]:
+        """
+        Get URLs that are likely important API endpoints.
+
+        Scans all entry URLs for common API patterns including:
+        - Version patterns (/v1/, /v2/, etc.)
+        - Common API key terms (api, auth, search, checkout, etc.)
+
+        Excludes:
+        - Non-relevant entries (JS, images, media)
+        - Third-party analytics, tracking, consent, and ad services
+
+        Returns:
+            List of unique URLs matching API patterns, sorted alphabetically.
+        """
+        matching_urls: set[str] = set()
+
+        for entry in self._entries:
+            # Skip non-relevant entries
+            if not self._is_relevant_entry(entry):
+                continue
+
+            # Skip excluded third-party domains
+            if self._is_excluded_third_party(entry.url):
+                continue
+
+            url_lower = entry.url.lower()
+
+            # Check for versioned API pattern (/v1/, /v2/, etc.)
+            if self.API_VERSION_PATTERN.search(entry.url):
+                matching_urls.add(entry.url)
+                continue
+
+            # Check for key terms in URL
+            for term in self.API_KEY_TERMS:
+                if term in url_lower:
+                    matching_urls.add(entry.url)
+                    break
+
+        return sorted(matching_urls)
+
+    def get_host_stats(self, host_filter: str | None = None) -> list[dict[str, Any]]:
+        """
+        Get per-host summary statistics.
+
+        Args:
+            host_filter: Optional substring to filter hosts (case-insensitive).
+
+        Returns:
+            List of dicts sorted by request count descending, each containing:
+            - host: The hostname
+            - request_count: Number of requests to this host
+            - methods: Dict of HTTP method counts
+            - status_codes: Dict of status code counts
+            - avg_time_ms: Average response time in milliseconds
+        """
+        host_data: dict[str, dict[str, Any]] = {}
+
+        for entry in self._entries:
+            host = entry.host
+
+            # Apply filter if provided
+            if host_filter and host_filter.lower() not in host.lower():
+                continue
+
+            if host not in host_data:
+                host_data[host] = {
+                    "request_count": 0,
+                    "methods": Counter(),
+                    "status_codes": Counter(),
+                    "total_time_ms": 0.0,
+                }
+
+            host_data[host]["request_count"] += 1
+            host_data[host]["methods"][entry.method] += 1
+            host_data[host]["status_codes"][entry.status] += 1
+            host_data[host]["total_time_ms"] += entry.time_ms
+
+        results = []
+        for host, data in sorted(host_data.items(), key=lambda x: -x[1]["request_count"]):
+            avg_time = data["total_time_ms"] / data["request_count"] if data["request_count"] > 0 else 0
+            results.append({
+                "host": host,
+                "request_count": data["request_count"],
+                "methods": dict(data["methods"]),
+                "status_codes": {str(k): v for k, v in data["status_codes"].items()},
+                "avg_time_ms": round(avg_time, 1),
+            })
+
+        return results
+
+    def search_response_bodies(
+        self,
+        value: str,
+        case_sensitive: bool = False,
+    ) -> list[dict[str, Any]]:
+        """
+        Search response bodies for a given value and return matches with context.
+
+        Args:
+            value: The value to search for in response bodies.
+            case_sensitive: Whether the search should be case-sensitive.
+
+        Returns:
+            List of dicts sorted by ascending id, each containing:
+            - id: Entry ID
+            - url: Request URL
+            - count: Number of occurrences in the response body
+            - sample: Context string (50 chars before and after first occurrence)
+        """
+        results: list[dict[str, Any]] = []
+
+        if not value:
+            return results
+
+        search_value = value if case_sensitive else value.lower()
+
+        for entry in self._entries:
+            if not entry.response_content:
+                continue
+
+            content = entry.response_content if case_sensitive else entry.response_content.lower()
+            original_content = entry.response_content
+
+            # Count occurrences
+            count = content.count(search_value)
+            if count == 0:
+                continue
+
+            # Find first occurrence and extract context
+            pos = content.find(search_value)
+            context_start = max(0, pos - 50)
+            context_end = min(len(original_content), pos + len(value) + 50)
+
+            sample = original_content[context_start:context_end]
+
+            # Add ellipsis if truncated
+            if context_start > 0:
+                sample = "..." + sample
+            if context_end < len(original_content):
+                sample = sample + "..."
+
+            results.append({
+                "id": entry.id,
+                "url": entry.url,
+                "count": count,
+                "sample": sample,
+            })
+
+        # Sort by ascending id
+        results.sort(key=lambda x: x["id"])
+
+        return results
 
     def get_cookies(self) -> dict[str, list[dict[str, Any]]]:
         """

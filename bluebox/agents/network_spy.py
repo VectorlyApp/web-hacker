@@ -5,6 +5,7 @@ Agent specialized in searching through network HAR files.
 
 Contains:
 - NetworkSpyAgent: Conversational interface for HAR file analysis
+- EndpointDiscoveryResult: Result model for autonomous endpoint discovery
 - Uses: LLMClient with tools for HAR searching
 - Maintains: ChatThread for multi-turn conversation
 """
@@ -12,6 +13,8 @@ Contains:
 import json
 from datetime import datetime
 from typing import Any, Callable
+
+from pydantic import BaseModel, Field
 
 from bluebox.data_models.llms.interaction import (
     Chat,
@@ -33,6 +36,36 @@ from bluebox.utils.logger import get_logger
 
 
 logger = get_logger(name=__name__)
+
+
+class DiscoveredEndpoint(BaseModel):
+    """A single discovered API endpoint."""
+
+    entry_ids: list[int] = Field(
+        description="HAR entry IDs for this endpoint"
+    )
+    url: str = Field(
+        description="The API endpoint URL"
+    )
+    endpoint_inputs: str = Field(
+        description="Brief description of what the endpoint takes as input (parameters, body fields)"
+    )
+    endpoint_outputs: str = Field(
+        description="Brief description of what data the endpoint returns"
+    )
+
+
+class EndpointDiscoveryResult(BaseModel):
+    """
+    Result of autonomous endpoint discovery.
+
+    Contains one or more discovered endpoints needed to complete the user's task.
+    Multiple endpoints may be needed for multi-step flows (e.g., auth -> search -> details).
+    """
+
+    endpoints: list[DiscoveredEndpoint] = Field(
+        description="List of discovered endpoints needed for the task"
+    )
 
 
 class NetworkSpyAgent:
@@ -97,6 +130,40 @@ When the user asks about specific data (e.g., "train prices", "search results", 
 - Always use search_har_by_terms first when looking for specific data
 """
 
+    AUTONOMOUS_SYSTEM_PROMPT: str = """You are a network traffic analyst that autonomously identifies API endpoints.
+
+## Your Mission
+
+Given a user task, find the API endpoint(s) that return the data needed for that task.
+Some tasks require multiple endpoints (e.g., auth -> search -> details).
+
+## Process
+
+1. **Search**: Use `search_har_responses_by_terms` with 20-30 relevant terms for the task
+2. **Analyze**: Look at top results, examine their structure with `get_entry_key_structure`
+3. **Verify**: Use `get_entry_detail` to confirm the endpoint has the right data
+4. **Finalize**: Once confident, call `finalize_result` with your findings
+
+## Strategy
+
+- Identify ALL endpoints needed to complete the task
+- Look for API/XHR calls (not HTML pages, JS files, or images)
+- Prefer endpoints with structured JSON responses
+- Consider multi-step flows: authentication, search, pagination, detail fetches
+
+## When finalize_result is available
+
+After sufficient exploration, the `finalize_result` tool becomes available.
+Call it with a list of endpoints, each containing:
+- entry_ids: The HAR entry ID(s) for this endpoint
+- url: The API URL
+- endpoint_inputs: Brief description of inputs (e.g., "from_city, to_city, date as query params")
+- endpoint_outputs: Brief description of outputs (e.g., "JSON array of train options with prices")
+
+Order endpoints by execution sequence if they form a multi-step flow.
+Be concise with inputs/outputs - just the key fields and types, not full schema.
+"""
+
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
@@ -146,6 +213,12 @@ When the user asks about specific data (e.g., "train prices", "search results", 
         if self._persist_chat_thread_callable and chat_thread is None:
             self._thread = self._persist_chat_thread_callable(self._thread)
 
+        # Autonomous mode state
+        self._autonomous_mode: bool = False
+        self._autonomous_iteration: int = 0
+        self._discovery_result: EndpointDiscoveryResult | None = None
+        self._finalize_tool_registered: bool = False
+
         logger.debug(
             "Instantiated NetworkSpyAgent with model: %s, chat_thread_id: %s, entries: %d",
             llm_model,
@@ -155,12 +228,12 @@ When the user asks about specific data (e.g., "train prices", "search results", 
 
     def _register_tools(self) -> None:
         """Register tools for HAR analysis."""
-        # search_har_by_terms
+        # search_har_responses_by_terms
         self.llm_client.register_tool(
-            name="search_har_by_terms",
+            name="search_har_responses_by_terms",
             description=(
-                "Search HAR entries by a list of terms. Searches HTML/JSON response bodies "
-                "(excludes JS, images, media) and returns top 10 entries ranked by relevance score. "
+                "Search RESPONSE bodies by a list of terms. Searches HTML/JSON response bodies "
+                "(excludes JS, images, media) and returns top 10-20 entries ranked by relevance score. "
                 "Pass 20-30 search terms for best results."
             ),
             parameters={
@@ -231,13 +304,120 @@ When the user asks about specific data (e.g., "train prices", "search results", 
             },
         )
 
+        # execute_python
+        self.llm_client.register_tool(
+            name="execute_python",
+            description=(
+                "Execute Python code to directly analyze the HAR data. "
+                "The variable `har_dict` is pre-loaded with the full HAR file as a Python dict. "
+                "Use this for complex queries that other tools can't handle. "
+                "Use print() to output results - all printed output will be returned. "
+                "Example: for e in har_dict['log']['entries'][:5]: print(e['request']['url'])"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": (
+                            "Python code to execute. `har_dict` is available as the full HAR dict. "
+                            "Use print() statements to output results."
+                        ),
+                    }
+                },
+                "required": ["code"],
+            },
+        )
+
+        # search_har_by_request
+        self.llm_client.register_tool(
+            name="search_har_by_request",
+            description=(
+                "Search the REQUEST side of HAR entries (URL, headers, body) for terms. "
+                "Useful for finding where sensitive data or parameters are sent. "
+                "Returns entries ranked by relevance."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "terms": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of search terms to look for in requests.",
+                    },
+                    "search_in": {
+                        "type": "array",
+                        "items": {"type": "string", "enum": ["url", "headers", "body"]},
+                        "description": "Where to search: 'url', 'headers', 'body'. Defaults to all.",
+                    }
+                },
+                "required": ["terms"],
+            },
+        )
+
+    def _register_finalize_tool(self) -> None:
+        """Register the finalize_result tool for autonomous mode (available after iteration 2)."""
+        if self._finalize_tool_registered:
+            return
+
+        self.llm_client.register_tool(
+            name="finalize_result",
+            description=(
+                "Finalize the endpoint discovery with your findings. "
+                "Call this when you have identified the API endpoint(s) needed for the user's task. "
+                "You can specify multiple endpoints if the task requires a multi-step flow "
+                "(e.g., authenticate -> search -> get details)."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "endpoints": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "entry_ids": {
+                                    "type": "array",
+                                    "items": {"type": "integer"},
+                                    "description": "HAR entry ID(s) for this endpoint.",
+                                },
+                                "url": {
+                                    "type": "string",
+                                    "description": "The API endpoint URL.",
+                                },
+                                "endpoint_inputs": {
+                                    "type": "string",
+                                    "description": (
+                                        "Brief description of inputs. "
+                                        "E.g., 'origin, destination, date as query params'."
+                                    ),
+                                },
+                                "endpoint_outputs": {
+                                    "type": "string",
+                                    "description": (
+                                        "Brief description of outputs. "
+                                        "E.g., 'JSON array of train options with price, times'."
+                                    ),
+                                },
+                            },
+                            "required": ["entry_ids", "url", "endpoint_inputs", "endpoint_outputs"],
+                        },
+                        "description": "List of discovered endpoints. Order by execution sequence if multi-step.",
+                    },
+                },
+                "required": ["endpoints"],
+            },
+        )
+        self._finalize_tool_registered = True
+        logger.debug("Registered finalize_result tool")
+
     @property
     def chat_thread_id(self) -> str:
         """Return the current thread ID."""
         return self._thread.id
 
     def _get_system_prompt(self) -> str:
-        """Get system prompt with HAR stats context."""
+        """Get system prompt with HAR stats context, host stats, and likely API URLs."""
         stats = self._har_data_store.stats
         stats_context = (
             f"\n\n## HAR File Context\n"
@@ -245,7 +425,41 @@ When the user asks about specific data (e.g., "train prices", "search results", 
             f"- Unique URLs: {stats.unique_urls}\n"
             f"- Unique Hosts: {stats.unique_hosts}\n"
         )
-        return self.SYSTEM_PROMPT + stats_context
+
+        # Add likely API URLs
+        likely_urls = self._har_data_store.likely_api_urls()
+        if likely_urls:
+            urls_list = "\n".join(f"- {url}" for url in likely_urls[:50])  # Limit to 50
+            urls_context = (
+                f"\n\n## Likely Important API Endpoints\n"
+                f"The following URLs are likely important API endpoints:\n\n"
+                f"{urls_list}\n\n"
+                f"Use the `get_unique_urls` tool to see all other URLs in the HAR file."
+            )
+        else:
+            urls_context = (
+                f"\n\n## API Endpoints\n"
+                f"No obvious API endpoints detected. Use the `get_unique_urls` tool to see all URLs."
+            )
+
+        # Add per-host stats
+        host_stats = self._har_data_store.get_host_stats()
+        if host_stats:
+            host_lines = []
+            for hs in host_stats[:15]:  # Top 15 hosts
+                methods_str = ", ".join(f"{m}:{c}" for m, c in sorted(hs["methods"].items()))
+                host_lines.append(
+                    f"- {hs['host']}: {hs['request_count']} reqs ({methods_str}) "
+                    f"avg {hs['avg_time_ms']}ms"
+                )
+            host_context = (
+                f"\n\n## Host Statistics\n"
+                f"{chr(10).join(host_lines)}"
+            )
+        else:
+            host_context = ""
+
+        return self.SYSTEM_PROMPT + stats_context + host_context + urls_context
 
     def _emit_message(self, message: EmittedMessage) -> None:
         """Emit a message via the callback."""
@@ -328,8 +542,8 @@ When the user asks about specific data (e.g., "train prices", "search results", 
             messages.append(msg)
         return messages
 
-    def _tool_search_har_by_terms(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute search_har_by_terms tool."""
+    def _tool_search_har_responses_by_terms(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute search_har_responses_by_terms tool."""
         terms = tool_arguments.get("terms", [])
         if not terms:
             return {"error": "No search terms provided"}
@@ -407,12 +621,122 @@ When the user asks about specific data (e.g., "train prices", "search results", 
             "url_counts": url_counts,
         }
 
+    def _tool_execute_python(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute Python code with har_dict pre-loaded from HarDataStore."""
+        import io
+        import sys
+
+        code = tool_arguments.get("code", "")
+        if not code:
+            return {"error": "No code provided"}
+
+        # Capture stdout
+        old_stdout = sys.stdout
+        sys.stdout = captured_output = io.StringIO()
+
+        try:
+            # Load har_dict from the data store (already parsed and in memory)
+            har_dict = self._har_data_store.raw_data
+
+            # Execute with har_dict and json available in scope
+            exec_globals = {
+                "har_dict": har_dict,
+                "json": json,
+            }
+            exec(code, exec_globals)  # noqa: S102
+
+            output = captured_output.getvalue()
+            return {
+                "output": output if output else "(no output)",
+            }
+
+        except Exception as e:
+            return {
+                "error": str(e),
+                "output": captured_output.getvalue(),
+            }
+
+        finally:
+            sys.stdout = old_stdout
+
+    def _tool_search_har_by_request(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Search request side (URL, headers, body) for terms."""
+        terms = tool_arguments.get("terms", [])
+        if not terms:
+            return {"error": "No search terms provided"}
+
+        search_in = tool_arguments.get("search_in", ["url", "headers", "body"])
+        if not search_in:
+            search_in = ["url", "headers", "body"]
+
+        terms_lower = [t.lower() for t in terms]
+        results: list[dict[str, Any]] = []
+
+        for entry in self._har_data_store.entries:
+            unique_terms_found = 0
+            total_hits = 0
+            matched_in: list[str] = []
+
+            # Search URL
+            if "url" in search_in:
+                url_lower = entry.url.lower()
+                for term in terms_lower:
+                    count = url_lower.count(term)
+                    if count > 0:
+                        unique_terms_found += 1
+                        total_hits += count
+                        if "url" not in matched_in:
+                            matched_in.append("url")
+
+            # Search headers
+            if "headers" in search_in:
+                headers_str = json.dumps(entry.request_headers).lower()
+                for term in terms_lower:
+                    count = headers_str.count(term)
+                    if count > 0:
+                        unique_terms_found += 1
+                        total_hits += count
+                        if "headers" not in matched_in:
+                            matched_in.append("headers")
+
+            # Search body
+            if "body" in search_in and entry.post_data:
+                body_lower = entry.post_data.lower()
+                for term in terms_lower:
+                    count = body_lower.count(term)
+                    if count > 0:
+                        unique_terms_found += 1
+                        total_hits += count
+                        if "body" not in matched_in:
+                            matched_in.append("body")
+
+            if unique_terms_found > 0:
+                score = (total_hits / len(terms_lower)) * unique_terms_found
+                results.append({
+                    "id": entry.id,
+                    "method": entry.method,
+                    "url": entry.url,
+                    "matched_in": matched_in,
+                    "unique_terms_found": unique_terms_found,
+                    "total_hits": total_hits,
+                    "score": round(score, 2),
+                })
+
+        # Sort by score descending
+        results.sort(key=lambda x: x["score"], reverse=True)
+
+        return {
+            "terms_searched": len(terms),
+            "results_found": len(results),
+            "results": results[:20],  # Top 20
+        }
+
     def _execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute a tool and return the result."""
         logger.debug("Executing tool %s with arguments: %s", tool_name, tool_arguments)
 
-        if tool_name == "search_har_by_terms":
-            return self._tool_search_har_by_terms(tool_arguments)
+        if tool_name == "search_har_responses_by_terms":
+            return self._tool_search_har_responses_by_terms(tool_arguments)
 
         if tool_name == "get_entry_detail":
             return self._tool_get_entry_detail(tool_arguments)
@@ -423,7 +747,63 @@ When the user asks about specific data (e.g., "train prices", "search results", 
         if tool_name == "get_unique_urls":
             return self._tool_get_unique_urls(tool_arguments)
 
+        if tool_name == "execute_python":
+            return self._tool_execute_python(tool_arguments)
+
+        if tool_name == "search_har_by_request":
+            return self._tool_search_har_by_request(tool_arguments)
+
+        if tool_name == "finalize_result":
+            return self._tool_finalize_result(tool_arguments)
+
         return {"error": f"Unknown tool: {tool_name}"}
+
+    def _tool_finalize_result(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Handle finalize_result tool call in autonomous mode."""
+        endpoints_data = tool_arguments.get("endpoints", [])
+
+        if not endpoints_data:
+            return {"error": "endpoints list is required and cannot be empty"}
+
+        # Validate and build endpoint objects
+        discovered_endpoints: list[DiscoveredEndpoint] = []
+        for i, ep in enumerate(endpoints_data):
+            entry_ids = ep.get("entry_ids", [])
+            url = ep.get("url", "")
+            endpoint_inputs = ep.get("endpoint_inputs", "")
+            endpoint_outputs = ep.get("endpoint_outputs", "")
+
+            if not entry_ids:
+                return {"error": f"endpoints[{i}].entry_ids is required"}
+            if not url:
+                return {"error": f"endpoints[{i}].url is required"}
+            if not endpoint_inputs:
+                return {"error": f"endpoints[{i}].endpoint_inputs is required"}
+            if not endpoint_outputs:
+                return {"error": f"endpoints[{i}].endpoint_outputs is required"}
+
+            discovered_endpoints.append(DiscoveredEndpoint(
+                entry_ids=entry_ids,
+                url=url,
+                endpoint_inputs=endpoint_inputs,
+                endpoint_outputs=endpoint_outputs,
+            ))
+
+        # Store the result
+        self._discovery_result = EndpointDiscoveryResult(endpoints=discovered_endpoints)
+
+        logger.info(
+            "Finalized endpoint discovery: %d endpoint(s) found",
+            len(discovered_endpoints),
+        )
+        for ep in discovered_endpoints:
+            logger.info("  - %s (entries: %s)", ep.url, ep.entry_ids)
+
+        return {
+            "status": "success",
+            "message": f"Endpoint discovery finalized with {len(discovered_endpoints)} endpoint(s)",
+            "result": self._discovery_result.model_dump(),
+        }
 
     def _auto_execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> str:
         """Auto-execute a tool and emit the result."""
@@ -579,6 +959,217 @@ When the user asks about specific data (e.g., "train prices", "search results", 
         """Get all Chat messages in order."""
         return [self._chats[chat_id] for chat_id in self._thread.chat_ids if chat_id in self._chats]
 
+    def run_autonomous(
+        self,
+        task: str,
+        min_iterations: int = 3,
+        max_iterations: int = 5,
+    ) -> EndpointDiscoveryResult | None:
+        """
+        Run the agent autonomously to discover the main API endpoint for a task.
+
+        The agent will:
+        1. Search through HAR data to find relevant endpoints
+        2. Analyze and verify the endpoint structure
+        3. After iteration 2, the finalize_result tool becomes available
+        4. Return when finalize_result is called or max_iterations reached
+
+        Args:
+            task: User task description (e.g., "train prices and schedules from NYC to Boston")
+            min_iterations: Minimum iterations before allowing finalize (default 3)
+            max_iterations: Maximum iterations before stopping (default 5)
+
+        Returns:
+            EndpointDiscoveryResult if finalize_result was called, None otherwise.
+
+        Example:
+            result = agent.run_autonomous(
+                task="Find train prices and options from NYC to Chicago on March 15"
+            )
+            if result:
+                print(f"Found endpoint: {result.url}")
+                print(f"Inputs: {result.endpoint_inputs}")
+                print(f"Outputs: {result.endpoint_outputs}")
+        """
+        # Enable autonomous mode
+        self._autonomous_mode = True
+        self._autonomous_iteration = 0
+        self._discovery_result = None
+        self._finalize_tool_registered = False
+
+        # Add the task as initial message
+        initial_message = (
+            f"TASK: {task}\n\n"
+            "Find the main API endpoint that returns the data needed for this task. "
+            "Search, analyze, and when confident, use finalize_result to report your findings."
+        )
+        self._add_chat(ChatRole.USER, initial_message)
+
+        logger.info("Starting autonomous discovery for task: %s", task)
+
+        # Run the autonomous agent loop
+        self._run_autonomous_loop(min_iterations, max_iterations)
+
+        # Reset autonomous mode
+        self._autonomous_mode = False
+
+        return self._discovery_result
+
+    def _run_autonomous_loop(self, min_iterations: int, max_iterations: int) -> None:
+        """
+        Run the autonomous agent loop with iteration tracking and finalize tool gating.
+
+        Args:
+            min_iterations: Minimum iterations before finalize_result is available
+            max_iterations: Maximum iterations before stopping
+        """
+        for iteration in range(max_iterations):
+            self._autonomous_iteration = iteration + 1
+            logger.debug("Autonomous loop iteration %d/%d", self._autonomous_iteration, max_iterations)
+
+            # After min_iterations-1, register the finalize_result tool
+            if self._autonomous_iteration >= min_iterations - 1 and not self._finalize_tool_registered:
+                self._register_finalize_tool()
+                logger.info(
+                    "finalize_result tool now available (iteration %d)",
+                    self._autonomous_iteration,
+                )
+
+            messages = self._build_messages_for_llm()
+
+            try:
+                # Use streaming if chunk callback is set
+                if self._stream_chunk_callable:
+                    response = self._process_streaming_response_autonomous(messages)
+                else:
+                    response = self.llm_client.call_sync(
+                        messages=messages,
+                        system_prompt=self._get_autonomous_system_prompt(),
+                        previous_response_id=self._previous_response_id,
+                    )
+
+                # Update previous_response_id for response chaining
+                if response.response_id:
+                    self._previous_response_id = response.response_id
+
+                # Handle response - add assistant message if there's content or tool calls
+                if response.content or response.tool_calls:
+                    chat = self._add_chat(
+                        ChatRole.ASSISTANT,
+                        response.content or "",
+                        tool_calls=response.tool_calls if response.tool_calls else None,
+                        llm_provider_response_id=response.response_id,
+                    )
+                    if response.content:
+                        self._emit_message(
+                            ChatResponseEmittedMessage(
+                                content=response.content,
+                                chat_id=chat.id,
+                                chat_thread_id=self._thread.id,
+                            )
+                        )
+
+                # If no tool calls, we're done (shouldn't happen in autonomous mode)
+                if not response.tool_calls:
+                    logger.warning("Autonomous loop: no tool calls in iteration %d", self._autonomous_iteration)
+                    return
+
+                # Process tool calls
+                for tool_call in response.tool_calls:
+                    tool_name = tool_call.tool_name
+                    tool_arguments = tool_call.tool_arguments
+                    call_id = tool_call.call_id
+
+                    # Auto-execute tool
+                    logger.debug("Auto-executing tool %s", tool_name)
+                    result_str = self._auto_execute_tool(tool_name, tool_arguments)
+
+                    # Add tool result to conversation history
+                    self._add_chat(
+                        ChatRole.TOOL,
+                        f"Tool '{tool_name}' result: {result_str}",
+                        tool_call_id=call_id,
+                    )
+
+                    # Check if finalize_result was called successfully
+                    if tool_name == "finalize_result" and self._discovery_result is not None:
+                        logger.info(
+                            "Autonomous discovery completed at iteration %d",
+                            self._autonomous_iteration,
+                        )
+                        return
+
+            except Exception as e:
+                logger.exception("Error in autonomous loop: %s", e)
+                self._emit_message(
+                    ErrorEmittedMessage(
+                        error=str(e),
+                    )
+                )
+                return
+
+        logger.warning(
+            "Autonomous loop hit max iterations (%d) without finalize_result",
+            max_iterations,
+        )
+
+    def _get_autonomous_system_prompt(self) -> str:
+        """Get system prompt for autonomous mode with HAR context."""
+        stats = self._har_data_store.stats
+        stats_context = (
+            f"\n\n## HAR File Context\n"
+            f"- Total Requests: {stats.total_requests}\n"
+            f"- Unique URLs: {stats.unique_urls}\n"
+            f"- Unique Hosts: {stats.unique_hosts}\n"
+        )
+
+        # Add likely API URLs
+        likely_urls = self._har_data_store.likely_api_urls()
+        if likely_urls:
+            urls_list = "\n".join(f"- {url}" for url in likely_urls[:30])
+            urls_context = (
+                f"\n\n## Likely API Endpoints\n"
+                f"{urls_list}"
+            )
+        else:
+            urls_context = ""
+
+        # Add finalize tool availability notice
+        if self._finalize_tool_registered:
+            finalize_notice = (
+                "\n\n## IMPORTANT: finalize_result is now available!\n"
+                "You can now call `finalize_result` to complete the discovery. "
+                "Do this when you have confidently identified the main API endpoint."
+            )
+        else:
+            finalize_notice = (
+                f"\n\n## Note: Continue exploring\n"
+                f"The `finalize_result` tool will become available after more exploration. "
+                f"Currently on iteration {self._autonomous_iteration}."
+            )
+
+        return self.AUTONOMOUS_SYSTEM_PROMPT + stats_context + urls_context + finalize_notice
+
+    def _process_streaming_response_autonomous(self, messages: list[dict[str, str]]) -> LLMChatResponse:
+        """Process LLM response with streaming for autonomous mode."""
+        response: LLMChatResponse | None = None
+
+        for item in self.llm_client.call_stream_sync(
+            messages=messages,
+            system_prompt=self._get_autonomous_system_prompt(),
+            previous_response_id=self._previous_response_id,
+        ):
+            if isinstance(item, str):
+                if self._stream_chunk_callable:
+                    self._stream_chunk_callable(item)
+            elif isinstance(item, LLMChatResponse):
+                response = item
+
+        if response is None:
+            raise ValueError("No final response received from streaming LLM")
+
+        return response
+
     def reset(self) -> None:
         """Reset the conversation to a fresh state."""
         old_chat_thread_id = self._thread.id
@@ -586,6 +1177,12 @@ When the user asks about specific data (e.g., "train prices", "search results", 
         self._chats = {}
         self._previous_response_id = None
         self._response_id_to_chat_index = {}
+
+        # Reset autonomous mode state
+        self._autonomous_mode = False
+        self._autonomous_iteration = 0
+        self._discovery_result = None
+        self._finalize_tool_registered = False
 
         if self._persist_chat_thread_callable:
             self._thread = self._persist_chat_thread_callable(self._thread)

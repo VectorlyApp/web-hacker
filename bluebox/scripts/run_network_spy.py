@@ -11,6 +11,7 @@ Usage:
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from bluebox.agents.network_spy import NetworkSpyAgent
+from bluebox.agents.network_spy import NetworkSpyAgent, EndpointDiscoveryResult, DiscoveredEndpoint
 from bluebox.llms.infra.har_data_store import HarDataStore
 from bluebox.data_models.llms.interaction import (
     ChatRole,
@@ -108,11 +109,60 @@ def print_welcome(model: str, har_path: str, har_store: HarDataStore) -> None:
     ))
     console.print()
 
+    # Show host stats
+    host_stats = har_store.get_host_stats()
+    if host_stats:
+        host_table = Table(box=box.SIMPLE, show_header=True, padding=(0, 1))
+        host_table.add_column("Host", style="white")
+        host_table.add_column("Reqs", style="cyan", justify="right")
+        host_table.add_column("Methods", style="dim")
+
+        for hs in host_stats[:10]:  # Top 10 hosts
+            methods_str = ", ".join(f"{m}:{c}" for m, c in sorted(hs["methods"].items()))
+            host_table.add_row(
+                hs["host"][:50] + "..." if len(hs["host"]) > 50 else hs["host"],
+                str(hs["request_count"]),
+                methods_str,
+            )
+
+        if len(host_stats) > 10:
+            host_table.add_row(f"[dim]... and {len(host_stats) - 10} more hosts[/dim]", "", "")
+
+        console.print(Panel(
+            host_table,
+            title=f"[bold magenta]📊 Host Statistics[/bold magenta] [dim]({len(host_stats)} hosts)[/dim]",
+            border_style="magenta",
+            box=box.ROUNDED,
+        ))
+        console.print()
+
+    # Show likely API endpoints
+    likely_urls = har_store.likely_api_urls()
+    if likely_urls:
+        urls_table = Table(box=None, show_header=False, padding=(0, 1))
+        urls_table.add_column("URL", style="white")
+
+        # Show up to 20 URLs
+        for url in likely_urls[:20]:
+            urls_table.add_row(f"• {url}")
+
+        if len(likely_urls) > 20:
+            urls_table.add_row(f"[dim]... and {len(likely_urls) - 20} more[/dim]")
+
+        console.print(Panel(
+            urls_table,
+            title=f"[bold yellow]⚡ Likely API Endpoints[/bold yellow] [dim]({len(likely_urls)} found)[/dim]",
+            border_style="yellow",
+            box=box.ROUNDED,
+        ))
+        console.print()
+
     console.print(Panel(
         """[bold]Commands:[/bold]
-  [cyan]/reset[/cyan]    Start a new conversation
-  [cyan]/help[/cyan]     Show help
-  [cyan]/quit[/cyan]     Exit
+  [cyan]/autonomous <task>[/cyan]  Run autonomous endpoint discovery
+  [cyan]/reset[/cyan]              Start a new conversation
+  [cyan]/help[/cyan]               Show help
+  [cyan]/quit[/cyan]               Exit
 
 Just ask questions about the network traffic!""",
         title="[bold cyan]Network Spy[/bold cyan]",
@@ -230,6 +280,70 @@ class TerminalNetworkSpyChat:
         elif isinstance(message, ErrorEmittedMessage):
             print_error(message.error)
 
+    def _run_autonomous(self, task: str) -> None:
+        """Run autonomous endpoint discovery for a given task."""
+        console.print()
+        console.print(Panel(
+            f"[bold]Task:[/bold] {task}",
+            title="[bold magenta]🤖 Starting Autonomous Discovery[/bold magenta]",
+            border_style="magenta",
+            box=box.ROUNDED,
+        ))
+        console.print()
+
+        # Reset agent state for fresh autonomous run
+        self._agent.reset()
+
+        # Run autonomous discovery with timing
+        start_time = time.perf_counter()
+        result = self._agent.run_autonomous(task)
+        elapsed_time = time.perf_counter() - start_time
+
+        console.print()
+
+        if result:
+            # Build result tables for each endpoint
+            endpoint_count = len(result.endpoints)
+            tables = []
+
+            for i, ep in enumerate(result.endpoints, 1):
+                ep_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+                ep_table.add_column("Field", style="bold cyan")
+                ep_table.add_column("Value", style="white")
+
+                ep_table.add_row("Entry IDs", str(ep.entry_ids))
+                ep_table.add_row("URL", ep.url)
+                ep_table.add_row("Inputs", ep.endpoint_inputs)
+                ep_table.add_row("Outputs", ep.endpoint_outputs)
+
+                if endpoint_count > 1:
+                    console.print(Panel(
+                        ep_table,
+                        title=f"[bold green]Endpoint {i}/{endpoint_count}[/bold green]",
+                        border_style="green",
+                        box=box.ROUNDED,
+                    ))
+                else:
+                    console.print(Panel(
+                        ep_table,
+                        title=f"[bold green]✓ Endpoint Discovery Complete[/bold green] [dim]({elapsed_time:.1f}s)[/dim]",
+                        border_style="green",
+                        box=box.ROUNDED,
+                    ))
+
+            if endpoint_count > 1:
+                console.print(f"[bold green]✓ Found {endpoint_count} endpoints[/bold green] [dim]({elapsed_time:.1f}s)[/dim]")
+        else:
+            console.print(Panel(
+                "[yellow]Could not finalize endpoint discovery. "
+                "The agent reached max iterations without calling finalize_result.[/yellow]",
+                title=f"[bold yellow]⚠ Discovery Incomplete[/bold yellow] [dim]({elapsed_time:.1f}s)[/dim]",
+                border_style="yellow",
+                box=box.ROUNDED,
+            ))
+
+        console.print()
+
     def run(self) -> None:
         """Run the interactive chat loop."""
         while True:
@@ -258,9 +372,11 @@ class TerminalNetworkSpyChat:
                     console.print()
                     console.print(Panel(
                         """[bold]Commands:[/bold]
-  [cyan]/reset[/cyan]    Start a new conversation
-  [cyan]/help[/cyan]     Show this help message
-  [cyan]/quit[/cyan]     Exit
+  [cyan]/autonomous <task>[/cyan]  Run autonomous endpoint discovery
+                        Example: /autonomous find train prices from NYC to Boston
+  [cyan]/reset[/cyan]              Start a new conversation
+  [cyan]/help[/cyan]               Show this help message
+  [cyan]/quit[/cyan]               Exit
 
 [bold]Tips:[/bold]
   - Ask about specific endpoints, headers, or cookies
@@ -271,6 +387,19 @@ class TerminalNetworkSpyChat:
                         box=box.ROUNDED,
                     ))
                     console.print()
+                    continue
+
+                # Handle /autonomous command
+                if user_input.strip().lower().startswith("/autonomous"):
+                    task = user_input.strip()[len("/autonomous"):].strip()
+                    if not task:
+                        console.print()
+                        console.print("[bold yellow]Usage:[/bold yellow] /autonomous <task description>")
+                        console.print("[dim]Example: /autonomous find train prices from NYC to Boston[/dim]")
+                        console.print()
+                        continue
+
+                    self._run_autonomous(task)
                     continue
 
                 self._agent.process_new_message(user_input, ChatRole.USER)
