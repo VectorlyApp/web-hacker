@@ -39,6 +39,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         self._client = OpenAI(api_key=Config.OPENAI_API_KEY)
         self._async_client = AsyncOpenAI(api_key=Config.OPENAI_API_KEY)
         self._file_search_vectorstores: list[str] | None = None
+        self._file_search_filters: dict | None = None
         logger.debug("Initialized OpenAIClient with model: %s", model)
 
     # Private methods ______________________________________________________________________________________________________
@@ -227,6 +228,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         previous_response_id: str | None,
         response_model: type[T] | None,
         stream: bool = False,
+        tool_choice: str | dict | None = None,
     ) -> dict[str, Any]:
         """Build kwargs for Responses API call."""
         kwargs: dict[str, Any] = {
@@ -262,14 +264,18 @@ class OpenAIClient(AbstractLLMVendorClient):
         for tool in self._tools:
             all_tools.append(self._convert_tool_to_responses_api_format(tool))
         if self._file_search_vectorstores:
-            all_tools.append({
+            file_search_tool: dict[str, Any] = {
                 "type": "file_search",
                 "vector_store_ids": self._file_search_vectorstores,
-            })
+            }
+            if self._file_search_filters:
+                file_search_tool["filters"] = self._file_search_filters
+            all_tools.append(file_search_tool)
 
         if all_tools and response_model is None:
             kwargs["tools"] = all_tools
-            tool_names = [t.get("name") or t.get("type") for t in all_tools]
+            if tool_choice:
+                kwargs["tool_choice"] = tool_choice
 
         return kwargs
 
@@ -385,16 +391,22 @@ class OpenAIClient(AbstractLLMVendorClient):
             }
         })
 
-    def set_file_search_vectorstores(self, vector_store_ids: list[str] | None) -> None:
+    def set_file_search_vectorstores(
+        self,
+        vector_store_ids: list[str] | None,
+        filters: dict | None = None,
+    ) -> None:
         """
         Set vectorstore IDs for file_search tool.
 
         Args:
             vector_store_ids: List of vectorstore IDs to search, or None to disable.
+            filters: Optional filters for file_search (e.g., {"type": "eq", "key": "uuid", "value": ["..."]}).
         """
         self._file_search_vectorstores = vector_store_ids
+        self._file_search_filters = filters
         if vector_store_ids:
-            logger.info("Set file_search vectorstores: %s", vector_store_ids)
+            logger.info("Set file_search vectorstores: %s (filters: %s)", vector_store_ids, filters)
         else:
             logger.info("Cleared file_search vectorstores")
 
@@ -412,6 +424,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        tool_choice: str | dict | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified sync call to OpenAI.
@@ -427,6 +440,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -463,6 +477,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             kwargs = self._build_responses_api_kwargs(
                 messages, input, system_prompt, max_tokens,
                 extended_reasoning, previous_response_id, response_model,
+                tool_choice=tool_choice,
             )
 
             if response_model is not None:
@@ -484,6 +499,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        tool_choice: str | dict | None = None,
     ) -> LLMChatResponse | T:
         """
         Unified async call to OpenAI.
@@ -499,6 +515,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Returns:
             LLMChatResponse or parsed Pydantic model if response_model is provided.
@@ -534,6 +551,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             kwargs = self._build_responses_api_kwargs(
                 messages, input, system_prompt, max_tokens,
                 extended_reasoning, previous_response_id, response_model,
+                tool_choice=tool_choice,
             )
 
             if response_model is not None:
@@ -553,6 +571,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         stateful: bool = False,  # noqa: ARG002 - reserved for future use
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
+        tool_choice: str | dict | None = None,
     ) -> Generator[str | LLMChatResponse, None, None]:
         """
         Unified streaming call to OpenAI.
@@ -569,6 +588,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             stateful: Enable stateful conversation (Responses API only).
             previous_response_id: Previous response ID for chaining (Responses API only).
             api_type: Explicit API type, or None for auto-resolution.
+            tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Yields:
             str: Text chunks as they arrive.
@@ -637,6 +657,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             kwargs = self._build_responses_api_kwargs(
                 messages, input, system_prompt, max_tokens,
                 extended_reasoning, previous_response_id, response_model=None, stream=True,
+                tool_choice=tool_choice,
             )
 
             stream = self._client.responses.create(**kwargs)
