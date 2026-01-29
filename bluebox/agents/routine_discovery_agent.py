@@ -12,7 +12,7 @@ Contains:
 import json
 from uuid import uuid4
 import os
-from typing import Callable
+from typing import Any, Callable
 
 from openai import OpenAI
 from pydantic import BaseModel, Field, ConfigDict
@@ -34,6 +34,7 @@ from bluebox.data_models.routine_discovery.message import (
 )
 from bluebox.data_models.routine.routine import Routine
 from bluebox.data_models.routine.dev_routine import DevRoutine
+from bluebox.llms.tools.execute_routine_tool import execute_routine_from_dict
 from bluebox.utils.exceptions import TransactionIdentificationFailedError
 from bluebox.utils.logger import get_logger
 
@@ -762,6 +763,38 @@ You have access to vectorstore that contains network transactions and storage da
 
         # return the test parameters response
         return test_parameters_response
+
+    def execute_routine(
+        self,
+        routine: Routine,
+        parameters: dict[str, Any],
+        remote_debugging_address: str = "http://127.0.0.1:9222",
+        timeout: float = 180.0,
+        close_tab_when_done: bool = True,
+        tab_id: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Execute a routine with the given parameters.
+
+        Args:
+            routine: The routine to execute
+            parameters: Parameters for the routine
+            remote_debugging_address: Chrome debugging address
+            timeout: Execution timeout in seconds
+            close_tab_when_done: Whether to close tab after execution
+            tab_id: Optional existing tab ID to use
+
+        Returns:
+            dict with 'success', 'result' or 'error'
+        """
+        return execute_routine_from_dict(
+            routine_dict=routine.model_dump(),
+            parameters=parameters,
+            remote_debugging_address=remote_debugging_address,
+            timeout=timeout,
+            close_tab_when_done=close_tab_when_done,
+            tab_id=tab_id,
+        )
 
     def _add_to_message_history(self, role: str, content: str) -> None:
         """
