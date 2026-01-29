@@ -5,44 +5,41 @@ Unit tests for execute_routine_tool.
 import json
 import pytest
 
-from bluebox.llms.tools.execute_routine_tool import (
-    execute_routine_from_json,
-    execute_routine_from_dict,
-)
+from bluebox.llms.tools.execute_routine_tool import execute_routine
 
 
-def test_execute_routine_from_json_invalid_json():
-    """Test that invalid JSON returns an error."""
-    result = execute_routine_from_json(
-        routine_json_str="not valid json",
+def test_execute_routine_invalid_json():
+    """Test that invalid JSON string returns an error."""
+    result = execute_routine(
+        routine="not valid json",
         parameters={"test": "value"},
     )
     assert result["success"] is False
     assert "Invalid routine JSON" in result["error"]
 
 
-def test_execute_routine_from_json_invalid_routine():
-    """Test that invalid routine structure returns an error."""
-    result = execute_routine_from_json(
-        routine_json_str='{"invalid": "routine"}',
+def test_execute_routine_invalid_routine_from_json():
+    """Test that invalid routine structure from JSON returns an error."""
+    result = execute_routine(
+        routine='{"invalid": "routine"}',
         parameters={"test": "value"},
     )
     assert result["success"] is False
     assert "Failed to parse routine" in result["error"]
 
 
-def test_execute_routine_from_dict_invalid_routine():
+def test_execute_routine_invalid_routine_from_dict():
     """Test that invalid routine dict returns an error."""
-    result = execute_routine_from_dict(
-        routine_dict={"invalid": "routine"},
+    result = execute_routine(
+        routine={"invalid": "routine"},
         parameters={"test": "value"},
     )
     assert result["success"] is False
     assert "Failed to parse routine" in result["error"]
 
 
-def test_execute_routine_from_json_valid_structure():
-    """Test that a valid routine structure can be parsed and executed."""
+def test_execute_routine_valid_json_string():
+    """Test that a valid routine JSON string can be parsed and executed."""
     routine = {
         "name": "test_routine",
         "description": "A test routine",
@@ -62,8 +59,8 @@ def test_execute_routine_from_json_valid_structure():
         ],
     }
 
-    result = execute_routine_from_json(
-        routine_json_str=json.dumps(routine),
+    result = execute_routine(
+        routine=json.dumps(routine),
         parameters={"test_param": "value"},
     )
 
@@ -79,7 +76,7 @@ def test_execute_routine_from_json_valid_structure():
         assert "Failed to parse routine" not in result.get("error", "")
 
 
-def test_execute_routine_from_dict_valid_structure():
+def test_execute_routine_valid_dict():
     """Test that a valid routine dict can be parsed and executed."""
     routine = {
         "name": "test_routine",
@@ -100,8 +97,8 @@ def test_execute_routine_from_dict_valid_structure():
         ],
     }
 
-    result = execute_routine_from_dict(
-        routine_dict=routine,
+    result = execute_routine(
+        routine=routine,
         parameters={"test_param": "value"},
     )
 

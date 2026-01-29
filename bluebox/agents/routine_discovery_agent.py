@@ -33,7 +33,7 @@ from bluebox.data_models.routine_discovery.message import (
 )
 from bluebox.data_models.routine.routine import Routine
 from bluebox.data_models.routine.dev_routine import DevRoutine
-from bluebox.llms.tools.execute_routine_tool import execute_routine_from_dict
+from bluebox.llms.tools.execute_routine_tool import execute_routine
 from bluebox.utils.exceptions import TransactionIdentificationFailedError
 from bluebox.utils.llm_utils import manual_llm_parse_text_to_model
 from bluebox.utils.logger import get_logger
@@ -762,8 +762,8 @@ You have access to vectorstore that contains network transactions and storage da
         Returns:
             dict with 'success', 'result' or 'error'
         """
-        return execute_routine_from_dict(
-            routine_dict=routine.model_dump(),
+        return execute_routine(
+            routine=routine.model_dump(),
             parameters=parameters,
             remote_debugging_address=remote_debugging_address,
             timeout=timeout,
