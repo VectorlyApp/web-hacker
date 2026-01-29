@@ -283,16 +283,9 @@ class OpenAIClient(AbstractLLMVendorClient):
         self,
         response: Any,
         response_model: type[T] | None,
-    ) -> LLMChatResponse | T:
+    ) -> LLMChatResponse:
         """Parse response from Chat Completions API."""
         message = response.choices[0].message
-
-        # Handle structured response
-        if response_model is not None:
-            parsed = getattr(message, "parsed", None)
-            if parsed is None:
-                raise ValueError("Failed to parse structured response from OpenAI")
-            return parsed
 
         # Extract all tool calls
         tool_calls: list[LLMToolCall] = []
@@ -304,33 +297,30 @@ class OpenAIClient(AbstractLLMVendorClient):
                     call_id=tc.id,
                 ))
 
+        # Handle structured response - extract parsed model if available
+        parsed = None
+        if response_model is not None:
+            parsed = getattr(message, "parsed", None)
+            if parsed is None:
+                raise ValueError("Failed to parse structured response from OpenAI")
+
         return LLMChatResponse(
             content=message.content,
             tool_calls=tool_calls,
+            parsed=parsed,
         )
 
     def _parse_responses_api_response(
         self,
         response: Any,
         response_model: type[T] | None,
-    ) -> LLMChatResponse | T:
+    ) -> LLMChatResponse:
         """Parse response from Responses API."""
-        # Handle structured response
-        if response_model is not None:
-            # Responses API returns structured output differently
-            output = response.output
-            if output and len(output) > 0:
-                for item in output:
-                    if hasattr(item, "content") and item.content:
-                        for content_block in item.content:
-                            if hasattr(content_block, "parsed") and content_block.parsed:
-                                return content_block.parsed
-            raise ValueError("Failed to parse structured response from OpenAI Responses API")
-
-        # Extract content and tool calls
+        # Extract content, tool calls, and parsed model
         content: str | None = None
         tool_calls: list[LLMToolCall] = []
         reasoning_content: str | None = None
+        parsed = None
 
         output = response.output
         if output:
@@ -345,13 +335,16 @@ class OpenAIClient(AbstractLLMVendorClient):
                         if reasoning_parts:
                             reasoning_content = "".join(reasoning_parts)
 
-                # Handle message content
+                # Handle message content and parsed structured output
                 if item.type == "message":
                     if hasattr(item, "content") and item.content:
                         text_parts = []
                         for content_block in item.content:
                             if content_block.type == "output_text":
                                 text_parts.append(content_block.text)
+                            # Extract parsed model if available
+                            if response_model is not None and hasattr(content_block, "parsed") and content_block.parsed:
+                                parsed = content_block.parsed
                         if text_parts:
                             content = "".join(text_parts)
 
@@ -363,11 +356,16 @@ class OpenAIClient(AbstractLLMVendorClient):
                         call_id=getattr(item, "call_id", None),
                     ))
 
+        # Validate parsed model was found if response_model was provided
+        if response_model is not None and parsed is None:
+            raise ValueError("Failed to parse structured response from OpenAI Responses API")
+
         return LLMChatResponse(
             content=content,
             tool_calls=tool_calls,
             response_id=response.id,
             reasoning_content=reasoning_content,
+            parsed=parsed,
         )
 
     # Public methods _______________________________________________________________________________________________________
@@ -425,7 +423,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
         tool_choice: str | dict | None = None,
-    ) -> LLMChatResponse | T:
+    ) -> LLMChatResponse:
         """
         Unified sync call to OpenAI.
 
@@ -443,7 +441,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Returns:
-            LLMChatResponse or parsed Pydantic model if response_model is provided.
+            LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
 
         Raises:
             ValueError: If incompatible parameters are combined.
@@ -500,7 +498,7 @@ class OpenAIClient(AbstractLLMVendorClient):
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
         tool_choice: str | dict | None = None,
-    ) -> LLMChatResponse | T:
+    ) -> LLMChatResponse:
         """
         Unified async call to OpenAI.
 
@@ -518,7 +516,7 @@ class OpenAIClient(AbstractLLMVendorClient):
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Returns:
-            LLMChatResponse or parsed Pydantic model if response_model is provided.
+            LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
 
         Raises:
             ValueError: If incompatible parameters are combined.

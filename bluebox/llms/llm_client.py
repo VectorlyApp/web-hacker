@@ -125,7 +125,7 @@ class LLMClient:
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
         tool_choice: str | dict | None = None,
-    ) -> LLMChatResponse | T:
+    ) -> LLMChatResponse:
         """
         Unified sync call to OpenAI.
 
@@ -143,7 +143,7 @@ class LLMClient:
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Returns:
-            LLMChatResponse or parsed Pydantic model if response_model is provided.
+            LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
         """
         return self._client.call_sync(
             messages=messages,
@@ -172,7 +172,7 @@ class LLMClient:
         previous_response_id: str | None = None,
         api_type: OpenAIAPIType | None = None,
         tool_choice: str | dict | None = None,
-    ) -> LLMChatResponse | T:
+    ) -> LLMChatResponse:
         """
         Unified async call to OpenAI.
 
@@ -190,7 +190,7 @@ class LLMClient:
             tool_choice: Tool choice for the API call (e.g., "auto", "required", or specific tool).
 
         Returns:
-            LLMChatResponse or parsed Pydantic model if response_model is provided.
+            LLMChatResponse. If response_model is provided, the parsed model is in response.parsed.
         """
         return await self._client.call_async(
             messages=messages,
