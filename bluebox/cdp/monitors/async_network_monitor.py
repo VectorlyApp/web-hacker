@@ -9,7 +9,9 @@ from __future__ import annotations
 import base64
 import json
 import re
+from datetime import datetime
 from fnmatch import fnmatch
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, ClassVar
 
 from bluebox.cdp.monitors.abstract_async_monitor import AbstractAsyncMonitor
@@ -706,7 +708,6 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
             return
         
         url = meta.get("url", "unknown")
-
         # check if URL is a static asset; if so, skip emitting
         if AsyncNetworkMonitor._is_static_asset(url):
             # cleanup metadata but don't emit
@@ -866,4 +867,3 @@ class AsyncNetworkMonitor(AbstractAsyncMonitor):
             "requests_tracked": len(self.req_meta),
             "pending_bodies": len(self.fetch_get_body_wait),
         }
-

@@ -19,8 +19,8 @@ from pydantic import BaseModel
 # Package root for code_paths (bluebox/sdk/ -> bluebox/)
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 
-from bluebox.routine_discovery.agent import RoutineDiscoveryAgent
-from bluebox.routine_discovery.data_store import LocalDiscoveryDataStore
+from bluebox.agents.routine_discovery_agent import RoutineDiscoveryAgent
+from bluebox.llms.infra.data_store import LocalDiscoveryDataStore
 from bluebox.data_models.routine.routine import Routine
 from bluebox.data_models.routine_discovery.message import RoutineDiscoveryMessage
 from bluebox.data_models.routine_discovery.llm_responses import TestParametersResponse

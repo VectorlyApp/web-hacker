@@ -139,7 +139,8 @@ class FileEventWriter:
         Creates standard subdirectory structure:
             output_dir/
             ├── network/
-            │   └── events.jsonl
+            │   ├── events.jsonl
+            │   └── javascript_events.jsonl
             ├── storage/
             │   └── events.jsonl
             ├── window_properties/
