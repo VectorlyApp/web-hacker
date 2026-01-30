@@ -77,7 +77,7 @@ class JSDataStore:
         if not path.exists():
             raise ValueError(f"JSONL file does not exist: {jsonl_path}")
 
-        # Load all entries (no filtering — the JS JSONL is already pre-filtered)
+        # load all entries (no filtering; the JS JSONL is already pre-filtered)
         with open(path, mode="r", encoding="utf-8") as f:
             for line_num, line in enumerate(f):
                 line = line.strip()
@@ -215,7 +215,10 @@ class JSDataStore:
         Returns:
             List of matching NetworkTransactionEvent entries.
         """
-        return [entry for entry in self._entries if fnmatch.fnmatch(entry.url, pattern)]
+        return [
+            entry for entry in self._entries
+            if fnmatch.fnmatch(entry.url, pattern)
+        ]
 
     def list_files(self) -> list[dict[str, Any]]:
         """

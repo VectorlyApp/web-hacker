@@ -9,6 +9,7 @@ Analyzes UI interaction recordings to discover routine parameters
 
 from __future__ import annotations
 
+import textwrap
 from typing import Any, Callable
 
 from pydantic import BaseModel, Field
@@ -58,75 +59,77 @@ class InteractionSpecialist(AbstractSpecialist):
     Analyzes recorded UI interactions to discover routine parameters.
     """
 
-    SYSTEM_PROMPT: str = """You are a UI interaction analyst specializing in discovering routine parameters from recorded browser interactions.
+    SYSTEM_PROMPT: str = textwrap.dedent("""\
+        You are a UI interaction analyst specializing in discovering routine parameters from recorded browser interactions.
 
-## Your Role
+        ## Your Role
 
-You analyze recorded UI interactions (clicks, keypresses, form inputs, etc.) to identify which interactions represent parameterizable inputs for a routine.
+        You analyze recorded UI interactions (clicks, keypresses, form inputs, etc.) to identify which interactions represent parameterizable inputs for a routine.
 
-## What to Look For
+        ## What to Look For
 
-- **Form inputs**: Text fields, search boxes, email/password fields
-- **Typed values**: Text entered by the user via keyboard
-- **Dropdown selections**: Select elements, custom dropdowns
-- **Date pickers**: Date/time inputs
-- **Checkboxes and toggles**: Boolean parameters
+        - **Form inputs**: Text fields, search boxes, email/password fields
+        - **Typed values**: Text entered by the user via keyboard
+        - **Dropdown selections**: Select elements, custom dropdowns
+        - **Date pickers**: Date/time inputs
+        - **Checkboxes and toggles**: Boolean parameters
 
-## What to Ignore
+        ## What to Ignore
 
-- **Navigational clicks**: Clicks on links, buttons that just navigate
-- **Non-parameterizable interactions**: Scroll events, hover effects, focus/blur without input
-- **UI framework noise**: Internal framework events
+        - **Navigational clicks**: Clicks on links, buttons that just navigate
+        - **Non-parameterizable interactions**: Scroll events, hover effects, focus/blur without input
+        - **UI framework noise**: Internal framework events
 
-## Parameter Requirements
+        ## Parameter Requirements
 
-Each discovered parameter needs:
-- **name**: snake_case name (e.g., `search_query`, `departure_date`)
-- **type**: One of: string, integer, number, boolean, date, datetime, email, url, enum
-- **description**: Clear description of what the parameter represents
-- **examples**: Observed values from the interactions
+        Each discovered parameter needs:
+        - **name**: snake_case name (e.g., `search_query`, `departure_date`)
+        - **type**: One of: string, integer, number, boolean, date, datetime, email, url, enum
+        - **description**: Clear description of what the parameter represents
+        - **examples**: Observed values from the interactions
 
-## Tools
+        ## Tools
 
-- **get_interaction_summary**: Overview statistics of all interactions
-- **search_interactions_by_type**: Filter by interaction type (click, input, change, etc.)
-- **search_interactions_by_element**: Filter by element attributes (tag, id, class, type)
-- **get_interaction_detail**: Full detail of a specific interaction event
-- **get_form_inputs**: All input/change events with values
-- **get_unique_elements**: Deduplicated elements with interaction counts
-"""
+        - **get_interaction_summary**: Overview statistics of all interactions
+        - **search_interactions_by_type**: Filter by interaction type (click, input, change, etc.)
+        - **search_interactions_by_element**: Filter by element attributes (tag, id, class, type)
+        - **get_interaction_detail**: Full detail of a specific interaction event
+        - **get_form_inputs**: All input/change events with values
+        - **get_unique_elements**: Deduplicated elements with interaction counts
+    """)
 
-    AUTONOMOUS_SYSTEM_PROMPT: str = """You are a UI interaction analyst that autonomously discovers routine parameters from recorded browser interactions.
+    AUTONOMOUS_SYSTEM_PROMPT: str = textwrap.dedent("""\
+        You are a UI interaction analyst that autonomously discovers routine parameters from recorded browser interactions.
 
-## Your Mission
+        ## Your Mission
 
-Analyze the recorded UI interactions to identify all parameterizable inputs, then produce a list of discovered parameters.
+        Analyze the recorded UI interactions to identify all parameterizable inputs, then produce a list of discovered parameters.
 
-## Process
+        ## Process
 
-1. **Survey**: Use `get_interaction_summary` to understand the overall interaction data
-2. **Focus on inputs**: Use `get_form_inputs` to find all form input events
-3. **Analyze elements**: Use `get_unique_elements` to see which elements were interacted with
-4. **Detail check**: Use `get_interaction_detail` for specific events needing closer inspection
-5. **Finalize**: Call `finalize_result` with discovered parameters
+        1. **Survey**: Use `get_interaction_summary` to understand the overall interaction data
+        2. **Focus on inputs**: Use `get_form_inputs` to find all form input events
+        3. **Analyze elements**: Use `get_unique_elements` to see which elements were interacted with
+        4. **Detail check**: Use `get_interaction_detail` for specific events needing closer inspection
+        5. **Finalize**: Call `finalize_result` with discovered parameters
 
-## Parameter Types
+        ## Parameter Types
 
-- `string`: General text input
-- `date`: Date values (YYYY-MM-DD)
-- `datetime`: Date+time values
-- `integer`: Whole numbers
-- `number`: Decimal numbers
-- `boolean`: True/false (checkboxes, toggles)
-- `email`: Email addresses
-- `url`: URLs
-- `enum`: Selection from fixed options
+        - `string`: General text input
+        - `date`: Date values (YYYY-MM-DD)
+        - `datetime`: Date+time values
+        - `integer`: Whole numbers
+        - `number`: Decimal numbers
+        - `boolean`: True/false (checkboxes, toggles)
+        - `email`: Email addresses
+        - `url`: URLs
+        - `enum`: Selection from fixed options
 
-## When finalize tools are available
+        ## When finalize tools are available
 
-- **finalize_result**: Submit discovered parameters
-- **finalize_failure**: Report that no parameters could be discovered
-"""
+        - **finalize_result**: Submit discovered parameters
+        - **finalize_failure**: Report that no parameters could be discovered
+    """)
 
     ## Magic methods
 
