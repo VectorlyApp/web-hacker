@@ -15,6 +15,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+from prompt_toolkit import prompt as pt_prompt
+from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.document import Document
+from prompt_toolkit.formatted_text import HTML
 from rich import box
 from rich.console import Console
 from rich.markdown import Markdown
@@ -44,6 +48,30 @@ from bluebox.utils.logger import get_logger
 
 logger = get_logger(name=__name__)
 console = Console()
+
+SLASH_COMMANDS = [
+    ("/autonomous", "Run autonomous parameter discovery — /autonomous <task>"),
+    ("/reset", "Start a new conversation"),
+    ("/help", "Show help"),
+    ("/quit", "Exit"),
+]
+
+
+class SlashCommandCompleter(Completer):
+    """Show slash command suggestions when the input starts with '/'."""
+
+    def get_completions(self, document: Document, complete_event: Any) -> Any:
+        text = document.text_before_cursor
+        if not text.startswith("/"):
+            return
+        for cmd, desc in SLASH_COMMANDS:
+            if cmd.startswith(text):
+                yield Completion(
+                    cmd,
+                    start_position=-len(text),
+                    display=cmd,
+                    display_meta=desc,
+                )
 
 
 BANNER = """\
@@ -299,7 +327,11 @@ class TerminalInteractionSpecialistChat:
         """Run the interactive chat loop."""
         while True:
             try:
-                user_input = console.input("[bold magenta]You>[/bold magenta] ")
+                user_input = pt_prompt(
+                    HTML("<b><ansimagenta>You&gt;</ansimagenta></b> "),
+                    completer=SlashCommandCompleter(),
+                    complete_while_typing=True,
+                )
 
                 if not user_input.strip():
                     continue
