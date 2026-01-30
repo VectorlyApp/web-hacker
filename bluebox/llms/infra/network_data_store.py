@@ -7,6 +7,7 @@ Parses JSONL files with NetworkTransactionEvent entries and provides
 structured access to network traffic data.
 """
 
+import fnmatch
 import json
 from collections import Counter
 from dataclasses import dataclass, field
@@ -208,6 +209,33 @@ class NetworkDataStore:
         """Return entries as a dict for compatibility."""
         return {"entries": [e.model_dump() for e in self._entries]}
 
+    @property
+    def url_counts(self) -> dict[str, int]:
+        """Mapping of each unique URL to its occurrence count."""
+        url_counts: Counter[str] = Counter(entry.url for entry in self._entries)
+        return dict(url_counts.most_common())
+
+    @property
+    def api_urls(self) -> list[str]:
+        """URLs that are likely API endpoints, sorted alphabetically."""
+        matching_urls: set[str] = set()
+
+        for entry in self._entries:
+            url_lower = entry.url.lower()
+
+            # Check for versioned API pattern (/v1/, /v2/, etc.)
+            if API_VERSION_PATTERN.search(entry.url):
+                matching_urls.add(entry.url)
+                continue
+
+            # Check for key terms in URL
+            for term in API_KEY_TERMS:
+                if term in url_lower:
+                    matching_urls.add(entry.url)
+                    break
+
+        return sorted(matching_urls)
+
     def _compute_stats(self) -> None:
         """Compute aggregate statistics from entries."""
         methods: Counter[str] = Counter()
@@ -324,28 +352,18 @@ class NetworkDataStore:
         """Get entry by request_id."""
         return self._entry_index.get(request_id)
 
-    @property
-    def unique_urls(self) -> list[str]:
-        """All unique URLs, sorted alphabetically."""
-        return sorted({entry.url for entry in self._entries})
-
-    def get_entry_ids_by_url(self, url: str) -> list[str]:
+    def get_entry_ids_by_url_pattern(self, pattern: str) -> list[str]:
         """
-        Get all request_ids that match the given URL.
+        Get all request_ids whose URLs match the given glob pattern.
 
         Args:
-            url: The URL to search for (exact match).
+            pattern: Glob pattern to match URLs (e.g., "*api/v1/*", "*/users*").
+                     Supports wildcards: * (any chars), ? (single char), [seq] (char set).
 
         Returns:
-            List of request_ids matching the URL.
+            List of request_ids whose URLs match the pattern.
         """
-        return [entry.request_id for entry in self._entries if entry.url == url]
-
-    @property
-    def url_counts(self) -> dict[str, int]:
-        """Mapping of each unique URL to its occurrence count."""
-        url_counts: Counter[str] = Counter(entry.url for entry in self._entries)
-        return dict(url_counts.most_common())
+        return [entry.request_id for entry in self._entries if fnmatch.fnmatch(entry.url, pattern)]
 
     def search_entries_by_terms(
         self,
@@ -411,27 +429,6 @@ class NetworkDataStore:
         results.sort(key=lambda x: x["score"], reverse=True)
 
         return results[:top_n]
-
-    @property
-    def api_urls(self) -> list[str]:
-        """URLs that are likely API endpoints, sorted alphabetically."""
-        matching_urls: set[str] = set()
-
-        for entry in self._entries:
-            url_lower = entry.url.lower()
-
-            # Check for versioned API pattern (/v1/, /v2/, etc.)
-            if API_VERSION_PATTERN.search(entry.url):
-                matching_urls.add(entry.url)
-                continue
-
-            # Check for key terms in URL
-            for term in API_KEY_TERMS:
-                if term in url_lower:
-                    matching_urls.add(entry.url)
-                    break
-
-        return sorted(matching_urls)
 
     def get_host_stats(self, host_filter: str | None = None) -> list[dict[str, Any]]:
         """
@@ -539,15 +536,6 @@ class NetworkDataStore:
 
         return results
 
-    def format_entry_summary(self, entry: NetworkTransactionEvent) -> str:
-        """Format a single entry as a summary string."""
-        return (
-            f"{entry.method} {entry.url}\n"
-            f"    Status: {entry.status or 'N/A'} {entry.status_text or ''}\n"
-            f"    Type: {entry.mime_type}\n"
-            f"    Size: {len(entry.response_body) if entry.response_body else 0} bytes"
-        )
-
     def get_response_body_schema(self, request_id: str) -> dict[str, Any] | None:
         """Get the schema of an entry's JSON response body."""
         entry = self.get_entry(request_id)
@@ -559,40 +547,3 @@ class NetworkDataStore:
             return extract_object_schema(data)
         except json.JSONDecodeError:
             return None
-
-    def format_entry_detail(self, entry: NetworkTransactionEvent) -> str:
-        """Format a single entry with full details."""
-        host = _get_host(entry.url)
-        path = _get_path(entry.url)
-
-        lines = [
-            f"Method: {entry.method}",
-            f"URL: {entry.url}",
-            f"Host: {host}",
-            f"Path: {path}",
-            f"Status: {entry.status or 'N/A'} {entry.status_text or ''}",
-            f"Content-Type: {entry.mime_type}",
-            f"Response Size: {len(entry.response_body) if entry.response_body else 0} bytes",
-            "Request Headers:",
-        ]
-
-        req_headers = entry.request_headers or {}
-        for k, v in sorted(req_headers.items()):
-            lines.append(f"  {k}: {v[:100]}{'...' if len(v) > 100 else ''}")
-
-        if entry.post_data:
-            lines.append("")
-            lines.append("Post Data:")
-            post_data_str = json.dumps(entry.post_data) if isinstance(entry.post_data, (dict, list)) else str(entry.post_data)
-            if len(post_data_str) > 1000:
-                lines.append(f"  {post_data_str[:1000]}...")
-            else:
-                lines.append(f"  {post_data_str}")
-
-        lines.append("")
-        lines.append("Response Headers:")
-        resp_headers = entry.response_headers or {}
-        for k, v in sorted(resp_headers.items()):
-            lines.append(f"  {k}: {v[:100]}{'...' if len(v) > 100 else ''}")
-
-        return "\n".join(lines)

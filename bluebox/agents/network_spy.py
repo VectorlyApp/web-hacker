@@ -386,6 +386,31 @@ If after exhaustive search you determine the required endpoint does NOT exist in
             },
         )
 
+        # search_response_bodies
+        self.llm_client.register_tool(
+            name="search_response_bodies",
+            description=(
+                "Search response bodies for a specific value and return matches with context. "
+                "Unlike search_har_responses_by_terms which ranks by relevance across many terms, "
+                "this tool finds exact matches for a single value and shows surrounding context. "
+                "Useful for finding where specific data (IDs, tokens, values) appears."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "type": "string",
+                        "description": "The exact value to search for in response bodies.",
+                    },
+                    "case_sensitive": {
+                        "type": "boolean",
+                        "description": "Whether the search should be case-sensitive. Defaults to false.",
+                    }
+                },
+                "required": ["value"],
+            },
+        )
+
     def _register_finalize_tool(self) -> None:
         """Register the finalize_result tool for autonomous mode (available after iteration 2)."""
         if self._finalize_tool_registered:
@@ -673,6 +698,7 @@ If after exhaustive search you determine the required endpoint does NOT exist in
             "response_key_structure": key_structure,
         }
 
+    @token_optimized
     def _tool_get_response_body_schema(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute get_response_body_schema tool."""
         request_id = tool_arguments.get("request_id")
@@ -812,6 +838,33 @@ If after exhaustive search you determine the required endpoint does NOT exist in
             "results": results[:20],  # Top 20
         }
 
+    @token_optimized
+    def _tool_search_response_bodies(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute search_response_bodies tool."""
+        value = tool_arguments.get("value", "")
+        if not value:
+            return {"error": "value is required"}
+
+        case_sensitive = tool_arguments.get("case_sensitive", False)
+
+        results = self._network_data_store.search_response_bodies(
+            value=value,
+            case_sensitive=case_sensitive,
+        )
+
+        if not results:
+            return {
+                "message": f"No matches found for '{value}'",
+                "case_sensitive": case_sensitive,
+            }
+
+        return {
+            "value_searched": value,
+            "case_sensitive": case_sensitive,
+            "results_found": len(results),
+            "results": results[:20],  # Top 20
+        }
+
     def _execute_tool(self, tool_name: str, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute a tool and return the result."""
         logger.debug("Executing tool %s with arguments: %s", tool_name, tool_arguments)
@@ -833,6 +886,9 @@ If after exhaustive search you determine the required endpoint does NOT exist in
 
         if tool_name == "search_har_by_request":
             return self._tool_search_har_by_request(tool_arguments)
+
+        if tool_name == "search_response_bodies":
+            return self._tool_search_response_bodies(tool_arguments)
 
         if tool_name == "finalize_result":
             return self._tool_finalize_result(tool_arguments)
