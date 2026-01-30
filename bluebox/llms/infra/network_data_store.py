@@ -1,6 +1,9 @@
 """
 bluebox/llms/infra/network_data_store.py
 
+# NOTE: This data store is coming to production soon!
+# NOTE: This replaces the vectorstore for network traffic analysis.
+
 Data store for network traffic analysis.
 
 Parses JSONL files with NetworkTransactionEvent entries and provides
