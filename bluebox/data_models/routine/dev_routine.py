@@ -66,14 +66,11 @@ class DevReturnOperation(BaseModel):
 
 
 # Dev routine operation union
-DevOperationUnion = Annotated[
-        Union[
-        DevNavigateOperation,
-        DevSleepOperation,
-        DevFetchOperation,
-        DevReturnOperation,
-    ],
-    Field(discriminator="type"),
+DevOperationUnion = Union[
+    DevNavigateOperation,
+    DevSleepOperation,
+    DevFetchOperation,
+    DevReturnOperation,
 ]
 
 
