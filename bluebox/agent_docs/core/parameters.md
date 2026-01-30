@@ -27,19 +27,19 @@ class Parameter(BaseModel):
 
 ## Parameter Types
 
-| Type | Description | Validation | Standalone | In String |
-|------|-------------|------------|------------|-----------|
-| `string` | Text | `min_length`, `max_length`, `pattern` | `"\"{{x}}\""` | `"...\"{{x}}\"..."` |
-| `integer` | Whole number | `min_value`, `max_value` | `"{{x}}"` | `"...\"{{x}}\"..."` |
-| `number` | Decimal | `min_value`, `max_value` | `"{{x}}"` | `"...\"{{x}}\"..."` |
-| `boolean` | true/false | - | `"{{x}}"` | `"...\"{{x}}\"..."` |
-| `date` | Date string | `format` | `"\"{{x}}\""` | `"...\"{{x}}\"..."` |
-| `datetime` | Date+time | `format` | `"\"{{x}}\""` | `"...\"{{x}}\"..."` |
-| `email` | Email address | Pattern validated | `"\"{{x}}\""` | `"...\"{{x}}\"..."` |
-| `url` | URL string | Pattern validated | `"\"{{x}}\""` | `"...\"{{x}}\"..."` |
-| `enum` | One of allowed | `enum_values` required | `"\"{{x}}\""` | `"...\"{{x}}\"..."` |
+| Type | Description | Validation | Standalone resolves to | In String |
+|------|-------------|------------|----------------------|-----------|
+| `string` | Text | `min_length`, `max_length`, `pattern` | `"john"` (string) | `"...john..."` |
+| `integer` | Whole number | `min_value`, `max_value` | `50` (int) | `"...50..."` |
+| `number` | Decimal | `min_value`, `max_value` | `19.99` (float) | `"...19.99..."` |
+| `boolean` | true/false | - | `true` (bool) | `"...true..."` |
+| `date` | Date string | `format` | `"2026-01-30"` (string) | `"...2026-01-30..."` |
+| `datetime` | Date+time | `format` | `"2026-01-30T12:00"` (string) | `"...2026-01-30T12:00..."` |
+| `email` | Email address | Pattern validated | `"user@example.com"` (string) | `"...user@example.com..."` |
+| `url` | URL string | Pattern validated | `"https://..."` (string) | `"...https://..."` |
+| `enum` | One of allowed | `enum_values` required | `"value"` (string) | `"...value..."` |
 
-**Rule:** String-like types always need `\"`. Primitives (int, number, bool) only need `\"` when embedded in a larger string.
+**Rule:** All placeholders use `"{{param}}"`. The parameter's `type` field determines the output type at runtime.
 
 ## Naming Rules
 
@@ -57,8 +57,8 @@ Available without definition in `parameters`:
 | `{{epoch_milliseconds}}` | Current timestamp in ms |
 
 ```json
-"requestId": "\"{{uuid}}\"",
-"timestamp": "\"{{epoch_milliseconds}}\""
+"requestId": "{{uuid}}",
+"timestamp": "{{epoch_milliseconds}}"
 ```
 
 ## Examples
@@ -134,10 +134,10 @@ Available without definition in `parameters`:
 ```json
 {
   "body": {
-    "username": "\"{{username}}\"",
+    "username": "{{username}}",
     "limit": "{{limit}}",
     "active": "{{is_active}}",
-    "date": "\"{{departure_date}}\"T00:00:00"
+    "date": "{{departure_date}}T00:00:00"
   }
 }
 ```

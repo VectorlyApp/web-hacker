@@ -8,7 +8,8 @@ Contains:
 - write_json_file(), write_jsonl(): Save data to files
 - get_text_from_html(): Extract text from HTML
 - resolve_dotted_path(): Access nested dict values by dot notation
-- apply_params(): Substitute {{placeholders}} in text
+- apply_params_to_str(): Substitute {{placeholders}} in strings
+- apply_params_to_dict(): Substitute {{placeholders}} in dicts with type-aware replacement
 - assert_balanced_js_delimiters(): Validate JS code structure
 - sanitize_filename(): Clean filenames for filesystem
 """
@@ -312,51 +313,111 @@ def resolve_dotted_path(
         return None
 
 
-def apply_params(text: str, parameters_dict: dict | None) -> str:
-    """
-    Replace parameter placeholders in text with actual values.
+# Regex matching a standalone placeholder: the entire string is "{{key}}" with optional whitespace
+_STANDALONE_PLACEHOLDER_RE = re.compile(r"^\{\{\s*([^}]+?)\s*\}\}$")
 
-    Only replaces {{param}} where 'param' is in parameters_dict.
-    Leaves other placeholders like {{sessionStorage:...}} untouched.
-    
-    Follows the pattern from test.py:
-    - For string values in quoted placeholders: insert raw string (no quotes)
-    - For non-string values in quoted placeholders: use json.dumps(value)
-    - All placeholders must be quoted: "{{param}}" or \"{{param}}\"
+# Regex matching any {{key}} pattern (for substring replacement)
+_PLACEHOLDER_RE = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
+
+
+def _coerce_value(value: Any, param_type: str) -> Any:
+    """Coerce a parameter value to the correct Python type based on the parameter schema type."""
+    from bluebox.data_models.routine.parameter import ParameterType
+    if param_type in (ParameterType.INTEGER,):
+        return int(value)
+    elif param_type in (ParameterType.NUMBER,):
+        return float(value)
+    elif param_type in (ParameterType.BOOLEAN,):
+        if isinstance(value, str):
+            return value.lower() in ("true", "1", "yes")
+        return bool(value)
+    else:
+        # string, date, datetime, email, url, enum — all string types
+        return str(value)
+
+
+def apply_params_to_dict(
+    d: dict | list,
+    parameters_dict: dict,
+    param_type_map: dict[str, str],
+) -> dict | list:
+    """
+    Walk a dict/list and replace {{param}} placeholders with typed values.
+
+    For standalone placeholders (the entire string value is "{{key}}"):
+      - Uses param_type_map to determine the output Python type
+      - e.g., integer → int, number → float, boolean → bool, string → str
+
+    For substring placeholders ("prefix {{key}} suffix"):
+      - Always str(value) substitution; result stays a string
+
+    Non-parameter placeholders ({{sessionStorage:...}}, {{uuid}}, etc.) are left untouched.
+
+    Args:
+        d: The dict or list to process (not mutated; returns a new copy).
+        parameters_dict: Mapping of parameter names to their values.
+        param_type_map: Mapping of parameter names to their ParameterType string.
+
+    Returns:
+        A new dict/list with placeholders replaced.
+    """
+    if not parameters_dict:
+        return d
+
+    def _resolve_value(v: Any) -> Any:
+        if isinstance(v, str):
+            # Check for standalone placeholder
+            m = _STANDALONE_PLACEHOLDER_RE.match(v)
+            if m:
+                key = m.group(1)
+                if key in parameters_dict:
+                    param_type = param_type_map.get(key, "string")
+                    return _coerce_value(parameters_dict[key], param_type)
+                # Not a user param (e.g. sessionStorage:...) — leave as-is
+                return v
+            # Substring replacement: replace all {{key}} occurrences within the string
+            def _sub(match: re.Match) -> str:
+                key = match.group(1)
+                if key in parameters_dict:
+                    return str(parameters_dict[key])
+                return match.group(0)  # leave non-param placeholders untouched
+            return _PLACEHOLDER_RE.sub(_sub, v)
+        elif isinstance(v, dict):
+            return {k: _resolve_value(val) for k, val in v.items()}
+        elif isinstance(v, list):
+            return [_resolve_value(item) for item in v]
+        return v
+
+    return _resolve_value(d)
+
+
+def apply_params_to_str(text: str, parameters_dict: dict | None) -> str:
+    """
+    Replace {{param}} placeholders in a plain string with str(value).
+
+    Use this for URLs, CSS selectors, text fields, JS code, filenames — contexts
+    where the result is always a string.
+
+    Non-parameter placeholders ({{sessionStorage:...}}, etc.) are left untouched.
 
     Args:
         text: Text containing parameter placeholders.
         parameters_dict: Dictionary of parameter values.
 
     Returns:
-        str: Text with parameters replaced.
+        Text with parameter placeholders replaced.
     """
-    logger.info("Applying params to text: %s with parameters_dict: %s", text, parameters_dict)
-    
     if not text or not parameters_dict:
         return text
 
-    for key, value in parameters_dict.items():
-        # Compute replacement based on value type (following test.py pattern)
-        if isinstance(value, str):
-            literal = value  # For strings, insert raw string (no quotes)
-        else:
-            literal = json.dumps(value)  # For numbers/bools/null, use JSON encoding
+    def _sub(match: re.Match) -> str:
+        key = match.group(1)
+        if key in parameters_dict:
+            return str(parameters_dict[key])
+        return match.group(0)
 
-        escaped_key = re.escape(key)
-
-        # Pattern 1: Simple quoted placeholder "{{key}}" in JSON string
-        # Matches: "{{key}}" (when the JSON value itself is the string "{{key}}")
-        simple_quoted = '"' + r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}' + '"'
-        text = re.sub(simple_quoted, literal, text)
-
-        # Pattern 2: Escaped quote variant \"{{key}}\"
-        # In JSON string this appears as: \\"{{key}}\\" 
-        double_escaped = r'\\"' + r'\{\{' + r'\s*' + escaped_key + r'\s*' + r'\}\}' + r'\\"'
-        text = re.sub(double_escaped, literal, text)
-
-    logger.info(f"Applied params to text: {text}")
-    return text
+    result = _PLACEHOLDER_RE.sub(_sub, text)
+    return result
 
 
 def extract_base_url_from_url(url: str) -> str | None:

@@ -45,7 +45,7 @@
     "endpoint": {
       "url": "https://api.example.com/log",
       "method": "POST",
-      "body": {"page": "\"{{sessionStorage:page_info.title}}\""}
+      "body": {"page": "{{sessionStorage:page_info.title}}"}
     }
   }
 ]
