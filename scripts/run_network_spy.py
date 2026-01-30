@@ -472,7 +472,7 @@ def main() -> None:
 
     # Parse JSONL into data store
     try:
-        network_store = NetworkDataStore.from_jsonl(str(jsonl_path))
+        network_store = NetworkDataStore(jsonl_path)
     except ValueError as e:
         console.print(f"[bold red]Error parsing JSONL file: {e}[/bold red]")
         sys.exit(1)
