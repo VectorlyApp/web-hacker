@@ -129,11 +129,12 @@ def step_2_discover_routine(
     """Step 2: Discover routine from captured data."""
     print_header("Step 2: Discover Routine")
 
-    # Check if capture data exists
-    transactions_dir = cdp_captures_dir / "network" / "transactions"
-    if not transactions_dir.exists() or not any(transactions_dir.iterdir()):
+    # Check if capture data exists (events.jsonl format)
+    network_events_file = cdp_captures_dir / "network" / "events.jsonl"
+    if not network_events_file.exists() or network_events_file.stat().st_size == 0:
         print_colored("⚠️  No capture data found. Cannot run discovery.", YELLOW)
         print("   Make sure you performed actions during monitoring.")
+        print(f"   Expected: {network_events_file}")
         return None
 
     if ask_yes_no("Skip discovery step?"):

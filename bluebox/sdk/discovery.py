@@ -111,11 +111,8 @@ class RoutineDiscovery:
             # Initialize data store
             self.data_store = LocalDiscoveryDataStore(
                 client=self.client,
+                cdp_captures_dir=self.cdp_captures_dir,
                 tmp_dir=str(Path(self.output_dir) / "tmp"),
-                transactions_dir=str(Path(self.cdp_captures_dir) / "network" / "transactions"),
-                consolidated_transactions_path=str(Path(self.cdp_captures_dir) / "network" / "consolidated_transactions.json"),
-                storage_jsonl_path=str(Path(self.cdp_captures_dir) / "storage" / "events.jsonl"),
-                window_properties_path=str(Path(self.cdp_captures_dir) / "window_properties" / "window_properties.json"),
                 documentation_paths=[str(PACKAGE_ROOT / "agent_docs")],
                 code_paths=[
                     str(PACKAGE_ROOT / "data_models" / "routine"),
