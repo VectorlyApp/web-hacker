@@ -13,6 +13,7 @@ Contains:
 import json
 from datetime import datetime
 from typing import Any, Callable
+from urllib.parse import urlparse, parse_qs
 
 from pydantic import BaseModel, Field
 
@@ -41,8 +42,8 @@ logger = get_logger(name=__name__)
 class DiscoveredEndpoint(BaseModel):
     """A single discovered API endpoint."""
 
-    entry_ids: list[int] = Field(
-        description="HAR entry IDs for this endpoint"
+    request_ids: list[str] = Field(
+        description="HAR entry request_ids for this endpoint"
     )
     url: str = Field(
         description="The API endpoint URL"
@@ -256,18 +257,18 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
         self.llm_client.register_tool(
             name="get_entry_detail",
             description=(
-                "Get full details of a specific HAR entry by ID. "
+                "Get full details of a specific HAR entry by request_id. "
                 "Returns method, URL, headers, request body, and response body."
             ),
             parameters={
                 "type": "object",
                 "properties": {
-                    "entry_id": {
-                        "type": "integer",
-                        "description": "The ID of the HAR entry to retrieve.",
+                    "request_id": {
+                        "type": "string",
+                        "description": "The request_id of the HAR entry to retrieve.",
                     }
                 },
-                "required": ["entry_id"],
+                "required": ["request_id"],
             },
         )
 
@@ -282,12 +283,12 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             parameters={
                 "type": "object",
                 "properties": {
-                    "entry_id": {
-                        "type": "integer",
-                        "description": "The ID of the HAR entry to get key structure for.",
+                    "request_id": {
+                        "type": "string",
+                        "description": "The request_id of the HAR entry to get key structure for.",
                     }
                 },
-                "required": ["entry_id"],
+                "required": ["request_id"],
             },
         )
 
@@ -376,10 +377,10 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
                         "items": {
                             "type": "object",
                             "properties": {
-                                "entry_ids": {
+                                "request_ids": {
                                     "type": "array",
-                                    "items": {"type": "integer"},
-                                    "description": "HAR entry ID(s) for this endpoint.",
+                                    "items": {"type": "string"},
+                                    "description": "HAR entry request_id(s) for this endpoint.",
                                 },
                                 "url": {
                                     "type": "string",
@@ -400,7 +401,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
                                     ),
                                 },
                             },
-                            "required": ["entry_ids", "url", "endpoint_inputs", "endpoint_outputs"],
+                            "required": ["request_ids", "url", "endpoint_inputs", "endpoint_outputs"],
                         },
                         "description": "List of discovered endpoints. Order by execution sequence if multi-step.",
                     },
@@ -569,24 +570,28 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
 
     def _tool_get_entry_detail(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute get_entry_detail tool."""
-        entry_id = tool_arguments.get("entry_id")
-        if entry_id is None:
-            return {"error": "entry_id is required"}
+        request_id = tool_arguments.get("request_id")
+        if request_id is None:
+            return {"error": "request_id is required"}
 
-        entry = self._network_data_store.get_entry(entry_id)
+        entry = self._network_data_store.get_entry(request_id)
         if entry is None:
-            return {"error": f"Entry {entry_id} not found"}
+            return {"error": f"Entry {request_id} not found"}
 
         # Truncate large response content
-        response_content = entry.response_content
+        response_content = entry.response_body
         if response_content and len(response_content) > 5000:
-            response_content = response_content[:5000] + f"\n... (truncated, {len(entry.response_content)} total chars)"
+            response_content = response_content[:5000] + f"\n... (truncated, {len(entry.response_body)} total chars)"
 
         # Get key structure for JSON responses
-        key_structure = self._network_data_store.get_entry_key_structure(entry_id)
+        key_structure = self._network_data_store.get_entry_key_structure(request_id)
+
+        # Parse query params from URL
+        parsed_url = urlparse(entry.url)
+        query_params = parse_qs(parsed_url.query)
 
         return {
-            "id": entry.id,
+            "request_id": request_id,
             "method": entry.method,
             "url": entry.url,
             "status": entry.status,
@@ -594,7 +599,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             "mime_type": entry.mime_type,
             "request_headers": entry.request_headers,
             "response_headers": entry.response_headers,
-            "query_params": entry.query_params,
+            "query_params": query_params,
             "post_data": entry.post_data,
             "response_content": response_content,
             "response_key_structure": key_structure,
@@ -602,19 +607,19 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
 
     def _tool_get_entry_key_structure(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute get_entry_key_structure tool."""
-        entry_id = tool_arguments.get("entry_id")
-        if entry_id is None:
-            return {"error": "entry_id is required"}
+        request_id = tool_arguments.get("request_id")
+        if request_id is None:
+            return {"error": "request_id is required"}
 
-        key_structure = self._network_data_store.get_entry_key_structure(entry_id)
+        key_structure = self._network_data_store.get_entry_key_structure(request_id)
         if key_structure is None:
-            entry = self._network_data_store.get_entry(entry_id)
+            entry = self._network_data_store.get_entry(request_id)
             if entry is None:
-                return {"error": f"Entry {entry_id} not found"}
-            return {"error": f"Entry {entry_id} does not have valid JSON response content"}
+                return {"error": f"Entry {request_id} not found"}
+            return {"error": f"Entry {request_id} does not have valid JSON response content"}
 
         return {
-            "entry_id": entry_id,
+            "request_id": request_id,
             "key_structure": key_structure,
         }
 
@@ -706,7 +711,8 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
 
             # Search body
             if "body" in search_in and entry.post_data:
-                body_lower = entry.post_data.lower()
+                post_data_str = json.dumps(entry.post_data) if isinstance(entry.post_data, (dict, list)) else str(entry.post_data)
+                body_lower = post_data_str.lower()
                 for term in terms_lower:
                     count = body_lower.count(term)
                     if count > 0:
@@ -718,7 +724,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             if unique_terms_found > 0:
                 score = (total_hits / len(terms_lower)) * unique_terms_found
                 results.append({
-                    "id": entry.id,
+                    "id": entry.request_id,
                     "method": entry.method,
                     "url": entry.url,
                     "matched_in": matched_in,
@@ -773,13 +779,13 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
         # Validate and build endpoint objects
         discovered_endpoints: list[DiscoveredEndpoint] = []
         for i, ep in enumerate(endpoints_data):
-            entry_ids = ep.get("entry_ids", [])
+            request_ids = ep.get("request_ids", [])
             url = ep.get("url", "")
             endpoint_inputs = ep.get("endpoint_inputs", "")
             endpoint_outputs = ep.get("endpoint_outputs", "")
 
-            if not entry_ids:
-                return {"error": f"endpoints[{i}].entry_ids is required"}
+            if not request_ids:
+                return {"error": f"endpoints[{i}].request_ids is required"}
             if not url:
                 return {"error": f"endpoints[{i}].url is required"}
             if not endpoint_inputs:
@@ -788,7 +794,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
                 return {"error": f"endpoints[{i}].endpoint_outputs is required"}
 
             discovered_endpoints.append(DiscoveredEndpoint(
-                entry_ids=entry_ids,
+                request_ids=request_ids,
                 url=url,
                 endpoint_inputs=endpoint_inputs,
                 endpoint_outputs=endpoint_outputs,
@@ -802,7 +808,7 @@ Be concise with inputs/outputs - just the key fields and types, not full schema.
             len(discovered_endpoints),
         )
         for ep in discovered_endpoints:
-            logger.info("  - %s (entries: %s)", ep.url, ep.entry_ids)
+            logger.info("  - %s (request_ids: %s)", ep.url, ep.request_ids)
 
         return {
             "status": "success",
