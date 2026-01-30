@@ -27,6 +27,7 @@ from bluebox.data_models.llms.interaction import (
     EmittedMessage,
 )
 from bluebox.data_models.llms.vendors import OpenAIModel
+from bluebox.llms.infra.network_data_store import NetworkDataStore
 from bluebox.utils.js_utils import generate_js_evaluate_wrapper_js, validate_js
 from bluebox.utils.llm_utils import token_optimized
 from bluebox.utils.logger import get_logger
@@ -109,6 +110,16 @@ class JSSpecialist(AbstractSpecialist):
         - Use `get_dom_snapshot` to understand page structure before writing code
     """)
 
+    _NETWORK_TRAFFIC_PROMPT_SECTION: str = textwrap.dedent("""
+        ## Network Traffic Data
+
+        You have access to captured network traffic from the browser session:
+        - **search_network_traffic**: Search/filter captured HTTP requests by method, host, path, status code, content type, or response body text. Returns abbreviated results (no bodies).
+        - **get_network_entry**: Get full details of a specific request by its request_id, including headers and response body.
+
+        Use these to understand API endpoints, response formats, and data available on the page.
+    """)
+
     AUTONOMOUS_SYSTEM_PROMPT: str = textwrap.dedent("""\
         You are a JavaScript expert that autonomously writes browser DOM manipulation code.
 
@@ -142,10 +153,13 @@ class JSSpecialist(AbstractSpecialist):
         - **execute_js_in_browser**: Test your JavaScript code against the live website before submitting
     """)
 
+    ## Magic methods
+
     def __init__(
         self,
         emit_message_callable: Callable[[EmittedMessage], None],
         dom_snapshots: list[DOMSnapshotEvent] | None = None,
+        network_data_store: NetworkDataStore | None = None,
         persist_chat_callable: Callable[[Chat], Chat] | None = None,
         persist_chat_thread_callable: Callable[[ChatThread], ChatThread] | None = None,
         stream_chunk_callable: Callable[[str], None] | None = None,
@@ -156,6 +170,7 @@ class JSSpecialist(AbstractSpecialist):
     ) -> None:
         self._dom_snapshots = dom_snapshots or []
         self._remote_debugging_address = remote_debugging_address
+        self._network_data_store = network_data_store
 
         # autonomous result state
         self._js_result: JSCodeResult | None = None
@@ -172,8 +187,9 @@ class JSSpecialist(AbstractSpecialist):
         )
 
         logger.debug(
-            "JSSpecialist initialized: dom_snapshots=%d, browser=%s",
+            "JSSpecialist initialized: dom_snapshots=%d, network_data_store=%s, browser=%s",
             len(self._dom_snapshots),
+            "yes" if self._network_data_store is not None else "no",
             "yes" if remote_debugging_address else "no",
         )
 
@@ -191,6 +207,9 @@ class JSSpecialist(AbstractSpecialist):
                 f"- Latest title: {latest.title or 'N/A'}\n"
             )
 
+        if self._network_data_store is not None:
+            context_parts.append(self._NETWORK_TRAFFIC_PROMPT_SECTION)
+
         return "".join(context_parts)
 
     def _get_autonomous_system_prompt(self) -> str:
@@ -203,6 +222,9 @@ class JSSpecialist(AbstractSpecialist):
                 f"- {len(self._dom_snapshots)} snapshot(s) available\n"
                 f"- Latest page: {latest.url}\n"
             )
+
+        if self._network_data_store is not None:
+            context_parts.append(self._NETWORK_TRAFFIC_PROMPT_SECTION)
 
         # Urgency notices
         if self._finalize_tools_registered:
@@ -260,6 +282,68 @@ class JSSpecialist(AbstractSpecialist):
                             "description": "Snapshot index (0-based). Defaults to latest (-1).",
                         }
                     },
+                },
+            )
+
+        # network traffic tools (only if data store available)
+        if self._network_data_store is not None:
+            self.llm_client.register_tool(
+                name="search_network_traffic",
+                description=(
+                    "Search/filter captured HTTP requests. Returns abbreviated results (no bodies). "
+                    "All parameters are optional filters."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "method": {
+                            "type": "string",
+                            "description": "HTTP method filter (e.g. GET, POST).",
+                        },
+                        "host_contains": {
+                            "type": "string",
+                            "description": "Substring match on the request host.",
+                        },
+                        "path_contains": {
+                            "type": "string",
+                            "description": "Substring match on the request path.",
+                        },
+                        "status_code": {
+                            "type": "integer",
+                            "description": "Exact HTTP status code filter.",
+                        },
+                        "content_type_contains": {
+                            "type": "string",
+                            "description": "Substring match on response content type.",
+                        },
+                        "response_body_contains": {
+                            "type": "string",
+                            "description": "Search for text within response bodies.",
+                        },
+                    },
+                },
+            )
+
+            self.llm_client.register_tool(
+                name="get_network_entry",
+                description="Get full details of a single captured HTTP request by request_id, including headers and response body.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "request_id": {
+                            "type": "string",
+                            "description": "The request_id from search_network_traffic results.",
+                        },
+                        "include_response_body": {
+                            "type": "boolean",
+                            "description": "Whether to include the response body (default true).",
+                        },
+                        "max_body_length": {
+                            "type": "integer",
+                            "description": "Max characters for the response body (default 5000).",
+                        },
+                    },
+                    "required": ["request_id"],
                 },
             )
 
@@ -361,6 +445,10 @@ class JSSpecialist(AbstractSpecialist):
             return self._tool_finalize_failure(tool_arguments)
         if tool_name == "execute_js_in_browser":
             return self._tool_execute_js_in_browser(tool_arguments)
+        if tool_name == "search_network_traffic":
+            return self._tool_search_network_traffic(tool_arguments)
+        if tool_name == "get_network_entry":
+            return self._tool_get_network_entry(tool_arguments)
 
         return {"error": f"Unknown tool: {tool_name}"}
 
@@ -492,6 +580,80 @@ class JSSpecialist(AbstractSpecialist):
             "message": "JavaScript task marked as failed",
             "result": self._js_failure.model_dump(),
         }
+
+    @token_optimized
+    def _tool_search_network_traffic(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Search captured network traffic with optional filters."""
+        if self._network_data_store is None:
+            return {"error": "No network data store available"}
+
+        response_body_contains = tool_arguments.pop("response_body_contains", None)
+
+        # Use search_entries for structured filters
+        entries = self._network_data_store.search_entries(
+            method=tool_arguments.get("method"),
+            host_contains=tool_arguments.get("host_contains"),
+            path_contains=tool_arguments.get("path_contains"),
+            status_code=tool_arguments.get("status_code"),
+            content_type_contains=tool_arguments.get("content_type_contains"),
+        )
+
+        # If body text search requested, intersect with body search results
+        if response_body_contains:
+            body_results = self._network_data_store.search_response_bodies(response_body_contains)
+            body_ids = {r["id"] for r in body_results}
+            entries = [e for e in entries if e.request_id in body_ids]
+
+        # Return abbreviated results
+        results = [
+            {
+                "request_id": e.request_id,
+                "url": e.url,
+                "method": e.method,
+                "status": e.status,
+                "mime_type": e.mime_type,
+            }
+            for e in entries
+        ]
+
+        return {"count": len(results), "entries": results}
+
+    @token_optimized
+    def _tool_get_network_entry(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
+        """Get full details of a single network entry by request_id."""
+        if self._network_data_store is None:
+            return {"error": "No network data store available"}
+
+        request_id = tool_arguments.get("request_id", "")
+        include_response_body = tool_arguments.get("include_response_body", True)
+        max_body_length = tool_arguments.get("max_body_length", 5000)
+
+        entry = self._network_data_store.get_entry(request_id)
+        if entry is None:
+            return {"error": f"No entry found for request_id: {request_id}"}
+
+        result: dict[str, Any] = {
+            "request_id": entry.request_id,
+            "url": entry.url,
+            "method": entry.method,
+            "status": entry.status,
+            "mime_type": entry.mime_type,
+            "request_headers": entry.request_headers,
+            "response_headers": entry.response_headers,
+            "post_data": entry.post_data,
+        }
+
+        if include_response_body:
+            body = entry.response_body
+            if len(body) > max_body_length:
+                result["response_body"] = body[:max_body_length]
+                result["response_body_truncated"] = True
+                result["response_body_full_length"] = len(body)
+            else:
+                result["response_body"] = body
+                result["response_body_truncated"] = False
+
+        return result
 
     @token_optimized
     def _tool_execute_js_in_browser(self, tool_arguments: dict[str, Any]) -> dict[str, Any]:
