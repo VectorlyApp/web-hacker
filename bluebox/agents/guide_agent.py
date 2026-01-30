@@ -733,9 +733,9 @@ and improve web automation routines.
             if chat.tool_calls:
                 msg["tool_calls"] = [
                     {
-                        "call_id": tc.call_id,
                         "name": tc.tool_name,
                         "arguments": tc.tool_arguments,
+                        "call_id": tc.call_id,
                     }
                     for tc in chat.tool_calls
                 ]
